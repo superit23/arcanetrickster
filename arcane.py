@@ -1,5 +1,5 @@
 from scapy.all import *
-from threading import Thread, Event
+from threading import Thread, Event, get_ident
 from queue import Queue, Empty
 from ipaddress import IPv4Network, IPv4Address
 import math
@@ -93,11 +93,21 @@ def binary_search_list(in_list: list, value: object, key: 'FunctionType'=lambda 
         raise IndexError("Item not in list")
 
 
+def api(func):
+    def _wrapper(self, *args, **kwargs):
+        self.mailbox.put((func, args, kwargs))
+
+    return _wrapper
+
+
 class ThreadedWorker(object):
     def __init__(self) -> None:
+        self.mailbox     = Queue()
         self.event       = Event()
         self.thread      = Thread(target=self._run, daemon=True)
         self.thread.start()
+        self.__init_loops()
+
 
     def __del__(self):
         '''Function used by python internals when object is deleted.'''
@@ -108,8 +118,78 @@ class ThreadedWorker(object):
         self.event.set()
 
 
+    @api
+    def sleep(self, sleep_time):
+        time.sleep(sleep_time)
+
+
+    @api
+    def _set(self, name, value):
+        object.__setattr__(self, name, value)
+
+
+    def __init_loops(self):
+        for attr_name in dir(self):
+            attr = getattr(self, attr_name)
+            if callable(attr) and hasattr(attr, '_loop_init'):
+                attr._loop_init(self)
+
+
+    def __setattr__(self, name: str, value: object) -> None:
+        # Fixes the race condition in initialization
+        if hasattr(self, "thread") and get_ident() != self.thread.ident:
+            self._set(name, value)
+        else:
+            object.__setattr__(self, name, value)
+
+
     def _run(self):
-        raise NotImplementedError
+        while not self.event.is_set():
+            try:
+                func, args, kwargs = self.mailbox.get(timeout=150e-3)
+                func(self, *args, **kwargs)
+            except Empty:
+                pass
+
+
+class TimerManager(ThreadedWorker):
+    def __init__(self) -> None:
+        self.timers = []
+        super().__init__()
+
+
+    def add_timer(self, sleep_time, callback, sig):
+        self.timers.append((time.time() + sleep_time, callback, sig))
+        self.timers.sort(key=lambda item: item[0])
+
+
+    def _run(self):
+        while not self.event.is_set():
+            time.sleep(1e-3)
+            idx = binary_search_list(self.timers, time.time(), key=lambda item: item[0], fuzzy=True)
+
+            for _, callback, (s, args, kwargs) in self.timers[:idx]:
+                callback(s, *args, **kwargs)
+
+            del self.timers[:idx]
+
+
+_timer_man = TimerManager()
+
+def loop(sleep_time):
+    def _outwrapper(func):
+        api_func = api(func)
+
+        def _wrapper(self, *args, **kwargs):
+            api_func(self, *args, **kwargs)
+            _timer_man.add_timer(sleep_time, _wrapper, (self, args, kwargs))
+
+        # Initialize the loop
+        api_func._loop_init = _wrapper
+        return api_func
+
+    return _outwrapper
+
 
 
 class NetworkInterface(ThreadedWorker):
@@ -410,27 +490,23 @@ class DHCPLeaseCollector(ThreadedWorker):
             self.interface.send(lease.build_request_packet(data[BOOTP].xid))
 
 
-    def _run(self):
-        while not self.event.is_set():
-            # TODO: This is way too slow if we're attempting to steal leases
-            # Maybe we can add a trigger?
-            time.sleep(0.5)
+    @loop(0.5)
+    def _loop(self):
+        xid   = random.randint(0, 2**32-1)
+        lease = None
+        if len(self.virtual_clients) < self.interface.network.num_addresses:
+            mac = random_mac()
+            self.virtual_clients[mac] = None
+        else:
+            # Look for virtual clients with expired leases
+            found = False
+            for mac, lease in self.virtual_clients.items():
+                if not lease or lease.is_expired:
+                    found = True
+                    break
 
-            xid   = random.randint(0, 2**32-1)
-            lease = None
-            if len(self.virtual_clients) < self.interface.network.num_addresses:
-                mac = random_mac()
-                self.virtual_clients[mac] = None
-            else:
-                # Look for virtual clients with expired leases
-                found = False
-                for mac, lease in self.virtual_clients.items():
-                    if not lease or lease.is_expired:
-                        found = True
-                        break
-
-                if not found:
-                    continue
+            if not found:
+                return
 
 
             # Let the lease ask for the same IP if possible
@@ -478,7 +554,7 @@ class DHCPLeaseRenewer(ThreadedWorker):
             else:
                 self.leases.append(lease)
 
-            self.leases = sorted(self.leases, key=lambda lease: lease.expiration)
+            self.leases.sort(key=lambda lease: lease.expiration)
 
 
     def renew_leases(self):
@@ -554,7 +630,6 @@ class DHCPSubleaser(DHCPLeaseGenerator):
         self.renewer   = DHCPLeaseRenewer(interface, lambda _x,_m,_l: None)
         self.collector = DHCPLeaseCollector(interface, self.renewer.lease_callback)
         self.renewer.xid_callback = self.collector.handle_external_xid
-        #self.stealer   = interface.subscribe(self.steal)
         self.interface = interface
         self.claimed   = {}
 
@@ -635,10 +710,10 @@ class DHCPReleaser(ThreadedWorker):
 
         # By not sleeping when encountering IPs on leases we own, we ensure that the
         # sweep time of each iteration decreases as we steal leases. This effectively
-        # fixes the pacing the packets in exchange for convergence
+        # fixes the pacing of the packets in exchange for convergence
         while not self.event.is_set():
             sleep_time = self.sweep_time / self.interface.network.num_addresses
-            time.sleep(1)
+            time.sleep(0.25)
 
             for ip in self.interface.network:
                 # It's not us, and we didn't assign it. Get 'em bois
@@ -753,7 +828,7 @@ class RoutingTable(object):
     
     def add(self, network: IPv4Network, hop: IPv4Address, interface: NetworkInterface):
         self.routes.append(IPv4Network(network), hop, interface)
-        self.routes = sorted(self.routes, key=lambda route: route[0].num_addresses)
+        self.routes.sort(key=lambda route: route[0].num_addresses)
 
 
     def __getitem__(self, destination_ip):
