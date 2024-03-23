@@ -2,6 +2,8 @@ from scapy.all import *
 from threading import Thread, Event, get_ident
 from queue import Queue, Empty
 from ipaddress import IPv4Network, IPv4Address
+from functools import lru_cache
+from enum import Enum, auto
 import math
 import random
 import time
@@ -15,7 +17,7 @@ arg_parser = argparse.ArgumentParser(
                     Ma\'am-in-the Middle DHCP Subleasing(LANlady)'""",
                     epilog='Text at the bottom of help')
 import logging
-logging.basicConfig(format='%(asctime)s - %(name)s [%(levelname)s] %(message)s', level=logging.INFO)
+logging.basicConfig(format='%(asctime)s - %(name)s(%(thread)d) [%(levelname)s] %(message)s', level=logging.INFO)
 
 # https://stackoverflow.com/questions/6067405/python-sockets-enabling-promiscuous-mode-in-linux
 import ctypes
@@ -34,10 +36,6 @@ def random_mac():
 
     mac = hex(mac)[2:].zfill(12)
     return f'{mac[:2]}:{mac[2:4]}:{mac[4:6]}:{mac[6:8]}:{mac[8:10]}:{mac[10:12]}'
-
-
-def mask_to_cidr(mask: str):
-    return int(sum([math.log2(int(part)+1) for part in mask.split('.')]))
 
 
 def binary_search_list(in_list: list, value: object, key: 'FunctionType'=lambda item: item, fuzzy: bool=False) -> int:
@@ -100,7 +98,15 @@ def api(func):
     return _wrapper
 
 
-class ThreadedWorker(object):
+class BaseObject(object):
+
+    @property
+    @lru_cache(1)
+    def log(self):
+        return logging.getLogger(self.__class__.__name__)
+
+
+class ThreadedWorker(BaseObject):
     def __init__(self) -> None:
         self.mailbox     = Queue()
         self.event       = Event()
@@ -131,8 +137,13 @@ class ThreadedWorker(object):
     def __init_loops(self):
         for attr_name in dir(self):
             attr = getattr(self, attr_name)
-            if callable(attr) and hasattr(attr, '_loop_init'):
-                attr._loop_init(self)
+            if callable(attr):
+                if hasattr(attr, '_loop_init'):
+                    attr._loop_init(self)
+                
+                if hasattr(attr, '_sub_init'):
+                    event_man, event = attr._sub_init
+                    event_man.subscribe(event, attr)
 
 
     def __setattr__(self, name: str, value: object) -> None:
@@ -191,11 +202,53 @@ def loop(sleep_time):
     return _outwrapper
 
 
+class EventManager(ThreadedWorker):
+    def __init__(self):
+        self.subscriptions = {}
+        super().__init__()
+    
+
+    @api
+    def subscribe(self, event: Enum, callback):
+        if not event in self.subscriptions:
+            self.subscriptions[event] = []
+
+        self.log.info(f"Appending callback for {event}")
+        self.subscriptions[event].append(callback)
+
+    @api
+    def trigger_event(self, event: Enum, *args, **kwargs):
+        if not event in self.subscriptions:
+            self.subscriptions[event] = []
+        
+        self.log.info(f"Event occurred: {event} {args}")
+        for subscriber in self.subscriptions[event]:
+            subscriber(*args, **kwargs)
+
+
+_event_man = EventManager()
+
+def trigger_event(event: Enum, *args, **kwargs):
+    _event_man.trigger_event(event, *args, **kwargs)
+
+
+def on_event(event: Enum):
+    def _wrapper(func):
+        func._sub_init = (_event_man, event)
+        return func
+
+    return _wrapper
+
+
+class NetworkInterfaceEvent(Enum):
+    READ = auto()
+
 
 class NetworkInterface(ThreadedWorker):
     '''This class creates a virtual network interface and a non-binding socket. 
         It uses a subscriber model to enable multi-threading.
     '''
+
     def __init__(self, name: str) -> None:
         self.name   = name
         # Create Socket and bind it
@@ -205,9 +258,7 @@ class NetworkInterface(ThreadedWorker):
         self.socket.setblocking(0)
         self.enter_promiscious_mode()
 
-        # Create subscriber model and then start thread in daemon mode
-        self.subscribers = []
-        self.arp_table   = ARPTable(self)
+        self.arp_table = ARPTable(self)
         super().__init__()
 
 
@@ -248,7 +299,6 @@ class NetworkInterface(ThreadedWorker):
                     return ltoa(msk)
 
 
-
     @property
     def network(self):
         return IPv4Network(f"{self.ip_address}/{self.subnet_mask}", strict=False)
@@ -269,46 +319,17 @@ class NetworkInterface(ThreadedWorker):
         self.socket.send(bytes(data))
 
 
-    def subscribe(self, callback: "Function"):
-        '''Adds a subscriber and passes the callback function in it's creation.'''
-        if type(callback) is not Subscriber:
-            callback = Subscriber(callback)
-        self.subscribers.append(callback)
-
-
     def _run(self):
         while not self.event.is_set():
             r, _w, _err = select.select([self.socket], [], [], 1e-5)
 
             if self.socket in r:
                 data = self.socket.recv(4 * 1024)
-
-                for sub in self.subscribers:
-                    sub(Ether(data))
+                trigger_event(NetworkInterfaceEvent.READ, Ether(data))
 
 
 
-class Subscriber(ThreadedWorker):
-    def __init__(self, callback: "Function") -> None:
-        self.callback = callback
-        self.queue    = Queue()
-        super().__init__()
-
-
-    def __call__(self, *args, **kwds):
-        self.queue.put((args, kwds))
-
-
-    def _run(self):
-        while not self.event.is_set():
-            try:
-                args, kwds = self.queue.get(timeout=1e-4)
-                self.callback(*args, **kwds)
-            except Empty:
-                pass
-
-
-class DHCPLeaseGenerator(object):
+class DHCPLeaseGenerator(BaseObject):
     def __init__(self) -> None:
         self.claimed    = {}
         self.mac_ip_map = {}
@@ -323,7 +344,7 @@ class DHCPLeaseGenerator(object):
                 if time.time() > expiration:
                     for lease in reversed(self.leases):
                         if hash(lease) == hash(old_lease):
-                            logging.debug(f"Renewing lease {repr(lease)}")
+                            self.log.debug(f"Renewing lease {repr(lease)}")
                             old_lease.renew(lease)
                             return lease
                 else:
@@ -350,14 +371,14 @@ class DHCPLeaseGenerator(object):
             # Handle claims
             self.claimed[lease.ip_address] = (lease, lease.expiration, mac_address)
             self.mac_ip_map[mac_address]   = lease.ip_address
-            logging.debug(f"Claiming lease {repr(lease)}")
+            self.log.debug(f"Claiming lease {repr(lease)}")
             return lease
 
         raise DHCPLeasePoolExhaustedException
 
 
     def release(self, ip_address: str=None):
-        logging.debug(f"Releasing lease {repr(ip_address)}")
+        self.log.debug(f"Releasing lease {repr(ip_address)}")
         del self.claimed[ip_address]
 
 
@@ -444,27 +465,38 @@ class DHCPLease(object):
         return self.build_packet_base(1) / DHCP(options=[("message-type", "release"), ("end")])
 
 
+class DHCPLeaseCollectorEvent(Enum):
+    NEW_LEASE = auto()
+
+class DHCPLeaseRenewerEvent(Enum):
+    NEW_XID = auto()
+
+class DHCPReleaseEvent(Enum):
+    LEASE_RELEASED = auto()
+
 
 class DHCPLeaseCollector(ThreadedWorker):
-    def __init__(self, interface: NetworkInterface, lease_callback: 'Function') -> None:
+    def __init__(self, interface: NetworkInterface) -> None:
         self.interface        = interface
-        self.lease_callback   = lease_callback
         self.server_ip        = None
         self.server_mac       = None
         self.recent           = set()
         self.virtual_clients  = {}
         self.xid_map          = {}
-        self.offer_subscriber = self.interface.subscribe(self.handle_offer_callback)
         super().__init__()
 
 
+    @on_event(DHCPLeaseRenewerEvent.NEW_XID)
+    @api
     def handle_external_xid(self, xid, mac):
         self.xid_map[xid] = mac
 
 
+    @on_event(NetworkInterfaceEvent.READ)
+    @api
     def handle_offer_callback(self, data):
         if DHCP in data and data[BOOTP].xid in self.xid_map:
-            logging.debug(f"Creating lease: MAC {data.dst} IP {data[BOOTP].yiaddr} Options {data[DHCP].options}")
+            self.log.debug(f"Creating lease: MAC {data.dst} IP {data[BOOTP].yiaddr} Options {data[DHCP].options}")
 
             # Grab server info on first packet
             if not self.server_ip:
@@ -486,10 +518,11 @@ class DHCPLeaseCollector(ThreadedWorker):
 
             self.virtual_clients[mac] = lease
 
-            self.lease_callback(lease)
+            trigger_event(DHCPLeaseCollectorEvent.NEW_LEASE, lease)
             self.interface.send(lease.build_request_packet(data[BOOTP].xid))
 
 
+    @on_event(DHCPReleaseEvent.LEASE_RELEASED)
     @loop(0.5)
     def _loop(self):
         xid   = random.randint(0, 2**32-1)
@@ -524,17 +557,17 @@ class DHCPLeaseCollector(ThreadedWorker):
             self.interface.send(packet)
 
 
-
 class DHCPLeaseRenewer(ThreadedWorker):
-    def __init__(self, interface: NetworkInterface, xid_callback: "Function") -> None:
+    def __init__(self, interface: NetworkInterface) -> None:
         self.interface = interface
         self.leases    = []
         self.pending   = {}
         self.queue     = Queue()
-        self.xid_callback = xid_callback
         super().__init__()
 
 
+    @on_event(DHCPLeaseCollectorEvent.NEW_LEASE)
+    @api
     def lease_callback(self, lease: DHCPLease):
         self.queue.put(lease)
 
@@ -566,15 +599,15 @@ class DHCPLeaseRenewer(ThreadedWorker):
             xid = random.randint(0, 2**32-1)
             if lease.is_expired:
                 expired_leases.append(lease)
-                self.xid_callback(xid, lease.mac_address)
+                trigger_event(DHCPLeaseRenewerEvent.NEW_XID, xid, lease.mac_address)
                 self.interface.send(lease.build_discover_packet(xid))
             else:
                 # Don't try to renew if it's already pending
                 if lease not in self.pending:
-                    logging.debug(f"Renewing lease {repr(lease)}")
+                    self.log.debug(f"Renewing lease {repr(lease)}")
 
                     self.pending[lease] = lease
-                    self.xid_callback(xid, lease.mac_address)
+                    trigger_event(DHCPLeaseRenewerEvent.NEW_XID, xid, lease.mac_address)
                     self.interface.send(lease.build_renewal_packet(xid))
 
         # Prune expired leases
@@ -582,7 +615,7 @@ class DHCPLeaseRenewer(ThreadedWorker):
             idx = binary_search_list(self.leases, lease.expiration, key=lambda lease: lease.expiration)
             del self.leases[idx]
 
-            logging.debug(f"Deleting expired lease {repr(lease)}")
+            self.log.debug(f"Deleting expired lease {repr(lease)}")
 
 
     def _run(self):
@@ -625,11 +658,11 @@ class DHCPRangeLeaser(DHCPLeaseGenerator):
         return self._leases
 
 
+
 class DHCPSubleaser(DHCPLeaseGenerator):
     def __init__(self, interface: NetworkInterface) -> None:
-        self.renewer   = DHCPLeaseRenewer(interface, lambda _x,_m,_l: None)
-        self.collector = DHCPLeaseCollector(interface, self.renewer.lease_callback)
-        self.renewer.xid_callback = self.collector.handle_external_xid
+        self.renewer   = DHCPLeaseRenewer(interface)
+        self.collector = DHCPLeaseCollector(interface)
         self.interface = interface
         self.claimed   = {}
 
@@ -639,42 +672,16 @@ class DHCPSubleaser(DHCPLeaseGenerator):
         return self.renewer.leases
 
 
-    def steal(self, packet):
-        # Someone's using an IP we didn't assign. Get 'em bois
-        if IP in packet and packet[IP].src != self.collector.server_ip and not packet[IP].src in self.claimed:
-            lease = DHCPLease(
-                mac_address=packet.src,
-                ip_address=packet[IP].src,
-                server_mac=self.collector.server_mac,
-                server_ip=self.collector.server_ip,
-                options=[],
-                duration=60
-            )
-
-            logging.debug(f"Stealing lease {repr(lease)}")
-
-            self.interface.send(lease.build_release_packet())
-
-
 class ARPTable(ThreadedWorker):
     def __init__(self, interface: NetworkInterface, sweep_time: int=30) -> None:
         self.interface  = interface
         self.table      = {}
-        self.subscriber = self.interface.subscribe(self.handle_packet)
         self.sweep_time = sweep_time
         super().__init__()
     
 
     def __getitem__(self, ip: str):
         return self.table[ip]
-
-
-    @staticmethod
-    def arp_scan(network: IPv4Network, timeout: int=1):
-        # https://www.geeksforgeeks.org/network-scanning-using-scapy-module-python/
-        request = Ether(dst='ff:ff:ff:ff:ff:ff')/ARP(pdst=str(network))
-        clients = scapy.all.srp(request, timeout=timeout)[0]
-        return {c[1].psrc: c[1].hwsrc for c in clients}
 
 
     def _run(self):
@@ -686,10 +693,11 @@ class ARPTable(ThreadedWorker):
                 self.interface.send(request)
 
 
+    @on_event(NetworkInterfaceEvent.READ)
+    @api
     def handle_packet(self, packet):
         if ARP in packet:
             self.arp_table[packet.psrc] = packet.hwsrc
-
 
 
 class DHCPReleaser(ThreadedWorker):
@@ -720,7 +728,7 @@ class DHCPReleaser(ThreadedWorker):
                 if str(ip) not in self.lease_generator.claimed and str(ip) != self.interface.ip_address:
                     time.sleep(sleep_time)
                     mac = self.interface.arp_table[str(ip)]
-                    logging.info(f"Releasing {ip} for {mac}")
+                    self.log.info(f"Releasing {ip} for {mac}")
 
                     lease = DHCPLease(
                         mac_address=mac,
@@ -731,14 +739,14 @@ class DHCPReleaser(ThreadedWorker):
                         duration=0
                     )
                     self.interface.send(lease.build_release_packet())
+                    trigger_event(DHCPReleaseEvent.LEASE_RELEASED, lease)
 
 
 
-class DHCPServer(object):
+class DHCPServer(ThreadedWorker):
     def __init__(self, interface: NetworkInterface, lease_generator: DHCPLeaseGenerator) -> None:
         self.lease_generator = lease_generator
         self.interface       = interface
-        self.interface.subscribe(self.handle_packet)
 
 
     def __repr__(self):
@@ -750,6 +758,8 @@ class DHCPServer(object):
         return len(self.lease_generator.leases)
 
 
+    @on_event(NetworkInterfaceEvent.READ)
+    @api
     def handle_packet(self, packet):
         if DHCP in packet:
             if not ("message-type", 2) in packet[DHCP].options and not ("message-type", 5) in packet[DHCP].options:
@@ -760,7 +770,7 @@ class DHCPServer(object):
 
     def handle_dhcp_discover(self, packet):
         if ("message-type", 1) in packet[DHCP].options:
-            logging.info(f"Handling DHCPDISCOVER for {packet.src}")
+            self.log.info(f"Handling DHCPDISCOVER for {packet.src}")
 
             packet.show()
 
@@ -779,14 +789,14 @@ class DHCPServer(object):
                 lease = self.lease_generator.claim(packet.src)
 
 
-            logging.info(f"Offering {lease.ip_address} to {packet.src}")
+            self.log.info(f"Offering {lease.ip_address} to {packet.src}")
 
             self.interface.send(lease.build_offer_packet(xid=packet[BOOTP].xid, dst_ip=dst_ip, dst_mac=packet.src, siaddr=self.interface.ip_address, yiaddr=lease.ip_address))
 
 
     def handle_dhcp_request(self, packet):
         if ("message-type", 3) in packet[DHCP].options:
-            logging.info(f"Handling DHCPREQUEST for {packet.src}")
+            self.log.info(f"Handling DHCPREQUEST for {packet.src}")
 
             packet.show()
 
@@ -800,14 +810,14 @@ class DHCPServer(object):
 
             try:
                 lease = self.lease_generator.renew(lease_ip)
-                logging.info(f"Sending lease for {lease.ip_address} to {packet.src}")
+                self.log.info(f"Sending lease for {lease.ip_address} to {packet.src}")
 
                 ack = lease.build_ack_packet(xid=packet[BOOTP].xid, dst_ip=packet[IP].src, dst_mac=packet.src, siaddr=self.interface.ip_address, yiaddr=lease.ip_address, ciaddr=packet[BOOTP].ciaddr, src_ip=self.interface.ip_address)
                 ack.show()
                 self.interface.send(ack)
 
             except DHCPLeaseExpiredException:
-                logging.info(f"Sending DHCPNAK to {packet.src}")
+                self.log.info(f"Sending DHCPNAK to {packet.src}")
                 nak = self.lease_generator.leases[0].build_nak_packet(xid=packet[BOOTP].xid, dst_ip=packet[IP].src, dst_mac=packet.src, src_ip=self.interface.ip_address)
                 nak.show()
                 self.interface.send(nak)
@@ -822,7 +832,7 @@ class NoMatchingRouteException(Exception):
     pass
 
 
-class RoutingTable(object):
+class RoutingTable(BaseObject):
     def __init__(self) -> None:
         self.routes = []
     
@@ -850,7 +860,7 @@ class RoutingTable(object):
             packet.dst = interface.arp_table[hop]
             interface.send(packet)
         except NoMatchingRouteException:
-            logging.info(f"No matching route; packet ({packet[IP].src}) -> ({packet[IP].dst}) dropped")
+            self.log.info(f"No matching route; packet ({packet[IP].src}) -> ({packet[IP].dst}) dropped")
 
 
 class Router(object):
@@ -865,15 +875,18 @@ class Router(object):
         self.routes.send(self.translator(packet))
 
 
-enp0s3 = NetworkInterface("enp0s3")
-enp0s8 = NetworkInterface("enp0s8")
-#server = DHCPServer(net_if, DHCPSubleaser(net_if))
-server = DHCPServer(enp0s3, DHCPRangeLeaser(enp0s3, IPv4Address("10.10.10.10"), IPv4Address("10.10.10.239"), routes=[]))
+eth0 = NetworkInterface("eth0")
+# enp0s3 = NetworkInterface("enp0s3")
+# enp0s8 = NetworkInterface("enp0s8")
+#server = DHCPServer(enp0s3, DHCPSubleaser(enp0s3))
+#server = DHCPServer(enp0s3, DHCPRangeLeaser(enp0s3, IPv4Address("10.10.10.10"), IPv4Address("10.10.10.239"), routes=[]))
+server = DHCPServer(eth0, DHCPSubleaser(eth0))
 #releaser = DHCPReleaser(enp0s3, server.lease_generator, '10.10.10.1')
 
-router = Router([enp0s3, enp0s8])
-router.routes.add("192.168.1.0/24", None, enp0s8)
-router.routes.add("10.10.10.0/24", None, enp0s3)
+eth0.thread.join()
+# router = Router([enp0s3, enp0s8])
+# router.routes.add("192.168.1.0/24", None, enp0s8)
+# router.routes.add("10.10.10.0/24", None, enp0s3)
 
 
 # TODO Add functionality to intercept a DHCPOFFER and inject our own routes.
