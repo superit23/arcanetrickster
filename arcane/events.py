@@ -12,3 +12,10 @@ class DHCPLeaseRenewerEvent(Enum):
 
 class DHCPReleaseEvent(Enum):
     LEASE_RELEASED = auto()
+
+class ARPTableEvent(Enum):
+    ENTRY_CHANGED = auto()
+
+class DHCPServerEvent(Enum):
+    LEASE_OFFERED = auto()
+    LEASE_DENIED  = auto()

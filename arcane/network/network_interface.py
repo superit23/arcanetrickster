@@ -69,7 +69,7 @@ class NetworkInterface(ThreadedWorker):
         for net, msk, gw, iface, addr, metric in conf.route.routes:
             if iface == self.name:
                 network = IPv4Network(f"{ltoa(net)}/{ltoa(msk)}")
-                if IPv4Address(self.ip_address) in network:
+                if IPv4Address(self.ip_address) in network and gw == '0.0.0.0':
                     return ltoa(msk)
 
 

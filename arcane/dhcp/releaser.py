@@ -12,7 +12,7 @@ class DHCPReleaser(ThreadedWorker):
         self.interface       = interface
         self.lease_generator = lease_generator
         self.server_ip       = server_ip
-        self.server_mac      = server_mac or self.interface.arp_table[self.server_ip]
+        self.server_mac      = server_mac or self.interface.arp_table.get_or_ask(self.server_ip)
         self.sweep_time      = sweep_time
         super().__init__()
 
@@ -26,6 +26,7 @@ class DHCPReleaser(ThreadedWorker):
         # By not sleeping when encountering IPs on leases we own, we ensure that the
         # sweep time of each iteration decreases as we steal leases. This effectively
         # fixes the pacing of the packets in exchange for convergence
+
         while not self.event.is_set():
             sleep_time = self.sweep_time / self.interface.network.num_addresses
             time.sleep(0.25)
@@ -33,17 +34,20 @@ class DHCPReleaser(ThreadedWorker):
             for ip in self.interface.network:
                 # It's not us, and we didn't assign it. Get 'em bois
                 if str(ip) not in self.lease_generator.claimed and str(ip) != self.interface.ip_address:
-                    time.sleep(sleep_time)
-                    mac = self.interface.arp_table[str(ip)]
-                    self.log.info(f"Releasing {ip} for {mac}")
+                    try:
+                        time.sleep(sleep_time)
+                        mac = self.interface.arp_table.get_or_ask(str(ip), sync_wait=0.1)
+                        self.log.info(f"Releasing {ip} for {mac}")
 
-                    lease = DHCPLease(
-                        mac_address=mac,
-                        ip_address=str(ip),
-                        server_mac=self.server_mac,
-                        server_ip=self.server_ip,
-                        options=[],
-                        duration=0
-                    )
-                    self.interface.send(lease.build_release_packet())
-                    trigger_event(DHCPReleaseEvent.LEASE_RELEASED, lease)
+                        lease = DHCPLease(
+                            mac_address=mac,
+                            ip_address=str(ip),
+                            server_mac=self.server_mac,
+                            server_ip=self.server_ip,
+                            options=[],
+                            duration=0
+                        )
+                        self.interface.send(lease.build_release_packet())
+                        trigger_event(DHCPReleaseEvent.LEASE_RELEASED, lease)
+                    except TimeoutError:
+                        pass

@@ -4,6 +4,7 @@ from arcane.events import DHCPLeaseCollectorEvent, DHCPLeaseRenewerEvent
 from arcane.dhcp.lease import DHCPLease
 from arcane.utilities import binary_search_list
 from arcane.event_manager import trigger_event, on_event
+from arcane.timer_manager import loop
 from queue import Queue, Empty
 import time
 import random
@@ -69,8 +70,7 @@ class DHCPLeaseRenewer(ThreadedWorker):
             self.log.debug(f"Deleting expired lease {repr(lease)}")
 
 
-    def _run(self):
-        while not self.event.is_set():
-            time.sleep(5)
-            self.handle_new_leases()
-            self.renew_leases()
+    @loop(5)
+    def loop(self):
+        self.handle_new_leases()
+        self.renew_leases()

@@ -1,13 +1,15 @@
 from arcane.base_object import BaseObject
 from arcane.network.network_interface import NetworkInterface
 from arcane.exceptions import NoMatchingRouteException
+from arcane.event_manager import on_event
+from arcane.events import NetworkInterfaceEvent
 from ipaddress import IPv4Address, IPv4Network
 from scapy.all import IP
+
 
 class NAT(object):
     def __call__(self, packet):
         return packet
-
 
 
 class RoutingTable(BaseObject):
@@ -43,12 +45,13 @@ class RoutingTable(BaseObject):
 
 class Router(object):
     def __init__(self, interfaces: 'List[NetworkInterface]', routes: RoutingTable=None, translator: NAT=None) -> None:
-        self.interfaces  = interfaces
+        self.interfaces  = set(interfaces)
         self.routes      = routes or RoutingTable()
         self.translator  = translator or NAT()
-        self.subscribers = [interface.subscribe(self.handle_packet) for interface in interfaces]
 
 
-    def handle_packet(self, packet):
-        self.routes.send(self.translator(packet))
+    @on_event(NetworkInterfaceEvent.READ)
+    def handle_packet(self, iface, packet):
+        if iface in self.interfaces:
+            self.routes.send(self.translator(packet))
 

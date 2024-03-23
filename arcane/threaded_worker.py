@@ -4,8 +4,20 @@ from queue import Queue, Empty
 import time
 
 def api(func):
-    def _wrapper(self, *args, **kwargs):
-        self.mailbox.put((func, args, kwargs))
+    def _wrapper(self, *args, sync_wait: int=None, **kwargs):
+        if not sync_wait:
+            self.mailbox.put((func, args, kwargs))
+        else:
+            queue = Queue()
+            def _get_result():
+                result = func(*args, **kwargs)
+                queue.put(result)
+
+            self.mailbox.put((_get_result, (), {}))
+            try:
+                return queue.get(timeout=sync_wait)
+            except Empty:
+                raise TimeoutError
 
     return _wrapper
 

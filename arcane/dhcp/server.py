@@ -1,18 +1,19 @@
 from arcane.dhcp.lease_generator import DHCPLeaseGenerator
 from arcane.network.network_interface import NetworkInterface
-from arcane.events import NetworkInterfaceEvent
-from arcane.event_manager import on_event
+from arcane.events import NetworkInterfaceEvent, DHCPServerEvent
+from arcane.event_manager import on_event, trigger_event
 from arcane.network.network_interface import NetworkInterface
 from arcane.threaded_worker import ThreadedWorker, api
 from arcane.exceptions import DHCPLeaseExpiredException
 from scapy.all import DHCP, IP, BOOTP
-import time
+
 
 
 class DHCPServer(ThreadedWorker):
     def __init__(self, interface: NetworkInterface, lease_generator: DHCPLeaseGenerator) -> None:
         self.lease_generator = lease_generator
         self.interface       = interface
+        super().__init__()
 
 
     def __repr__(self):
@@ -58,6 +59,7 @@ class DHCPServer(ThreadedWorker):
             self.log.info(f"Offering {lease.ip_address} to {packet.src}")
 
             self.interface.send(lease.build_offer_packet(xid=packet[BOOTP].xid, dst_ip=dst_ip, dst_mac=packet.src, siaddr=self.interface.ip_address, yiaddr=lease.ip_address))
+            trigger_event(DHCPServerEvent.LEASE_OFFERED, packet.src, lease)
 
 
     def handle_dhcp_request(self, packet):
@@ -79,11 +81,10 @@ class DHCPServer(ThreadedWorker):
                 self.log.info(f"Sending lease for {lease.ip_address} to {packet.src}")
 
                 ack = lease.build_ack_packet(xid=packet[BOOTP].xid, dst_ip=packet[IP].src, dst_mac=packet.src, siaddr=self.interface.ip_address, yiaddr=lease.ip_address, ciaddr=packet[BOOTP].ciaddr, src_ip=self.interface.ip_address)
-                ack.show()
                 self.interface.send(ack)
 
             except DHCPLeaseExpiredException:
                 self.log.info(f"Sending DHCPNAK to {packet.src}")
                 nak = self.lease_generator.leases[0].build_nak_packet(xid=packet[BOOTP].xid, dst_ip=packet[IP].src, dst_mac=packet.src, src_ip=self.interface.ip_address)
-                nak.show()
                 self.interface.send(nak)
+                trigger_event(DHCPServerEvent.LEASE_DENIED, packet.src, lease)
