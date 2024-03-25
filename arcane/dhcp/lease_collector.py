@@ -3,8 +3,9 @@ from arcane.events import NetworkInterfaceEvent, DHCPLeaseRenewerEvent, DHCPRele
 from arcane.event_manager import on_event, trigger_event
 from arcane.timer_manager import loop
 from arcane.utilities import random_mac
-from arcane.network.network_interface import NetworkInterface
-from scapy.all import DHCP, BOOTP, IP
+from arcane.network.interface import NetworkInterface
+from arcane.dhcp.lease import DHCPLease
+from scapy.all import DHCP, BOOTP, IP, Ether, UDP
 import random
 
 class DHCPLeaseCollector(ThreadedWorker):

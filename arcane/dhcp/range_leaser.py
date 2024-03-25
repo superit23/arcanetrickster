@@ -1,4 +1,4 @@
-from arcane.network.network_interface import NetworkInterface
+from arcane.network.interface import NetworkInterface
 from arcane.dhcp.lease_generator import DHCPLeaseGenerator
 from arcane.dhcp.lease import DHCPLease
 from arcane.utilities import random_mac
