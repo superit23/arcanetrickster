@@ -1,5 +1,5 @@
 from arcane.dhcp.lease_generator import DHCPLeaseGenerator
-from arcane.network.network_interface import NetworkInterface
+from arcane.network.interface import NetworkInterface
 from arcane.dhcp.lease_collector import DHCPLeaseCollector
 from arcane.dhcp.lease_renewer import DHCPLeaseRenewer
 

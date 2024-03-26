@@ -1,11 +1,32 @@
 from arcane.threaded_worker import ThreadedWorker, api
 from queue import Queue
+import logging
+
+
+class ArcaneEventFilter(logging.Filter):
+    def __init__(self, name: str = "", allowlist_events: set=None) -> None:
+        self.allowlist_events = allowlist_events or set()
+        super().__init__(name)
+
+
+    def filter(self, record: logging.LogRecord) -> bool | logging.LogRecord:
+        if "event" in record.__dict__:
+            if record.event in self.allowlist_events:
+                return super().filter(record)
+            else:
+                return False
+        else:
+            return super().filter(record)
+
 
 class EventManager(ThreadedWorker):
     def __init__(self):
         self.subscriptions  = {}
         self.sync_listeners = {}
+        self.log_filter = ArcaneEventFilter()
         super().__init__()
+
+        self.log.addFilter(self.log_filter)
 
 
     def wait_for_match(self, event, match_func):
@@ -18,10 +39,10 @@ class EventManager(ThreadedWorker):
         if not event in self.subscriptions:
             self.subscriptions[event] = []
             self.sync_listeners[event] = []
-    
+
     @api
     def _add_to_sync_queue(self, event, match_func, queue):
-        if not self.sync_listeners[event]:
+        if not event in self.sync_listeners:
             self.sync_listeners[event] = []
 
         self.sync_listeners[event].append((match_func, queue))
@@ -39,7 +60,7 @@ class EventManager(ThreadedWorker):
     def trigger_event(self, event: 'Enum', *args, **kwargs):
         self._check_init_event(event)
 
-        self.log.info(f"Event occurred: {event} {args}")
+        self.log.info(f"Event occurred: {event} {args}", extra={"event": event})
         for subscriber in self.subscriptions[event]:
             subscriber(*args, **kwargs)
         

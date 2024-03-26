@@ -1,5 +1,5 @@
 from arcane.threaded_worker import ThreadedWorker, api
-from arcane.network.network_interface import NetworkInterface
+from arcane.network.interface import NetworkInterface
 from arcane.events import DHCPLeaseCollectorEvent, DHCPLeaseRenewerEvent
 from arcane.dhcp.lease import DHCPLease
 from arcane.utilities import binary_search_list

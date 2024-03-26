@@ -1,4 +1,4 @@
-from arcane.network.network_interface import NetworkInterface
+from arcane.network.interface import NetworkInterface
 from arcane.dhcp.server import DHCPServer
 from arcane.dhcp.subleaser import DHCPSubleaser
 from arcane.dhcp.releaser import DHCPReleaser

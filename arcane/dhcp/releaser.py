@@ -49,4 +49,4 @@ class DHCPReleaser(ThreadedWorker):
                     self.interface.send(lease.build_release_packet())
                     trigger_event(DHCPReleaseEvent.LEASE_RELEASED, lease)
                 except TimeoutError:
-                    pass
+                    self.log.debug(f"Timeout: {ip} did not respond to ARP request")
