@@ -8,6 +8,6 @@ class BaseObject(object):
     @property
     @lru_cache(1)
     def log(self):
-        return logging.getLogger(self.__class__.__name__)
+        return logging.getLogger(f'{__name__}.{self.__class__.__name__}')
 
 

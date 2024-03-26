@@ -1,5 +1,5 @@
 from arcane.base_object import BaseObject
-from arcane.network.network_interface import NetworkInterface
+from arcane.network.interface import NetworkInterface
 from arcane.exceptions import NoMatchingRouteException
 from arcane.event_manager import on_event
 from arcane.events import NetworkInterfaceEvent
@@ -40,7 +40,7 @@ class RoutingTable(BaseObject):
             packet.dst = interface.arp_table[hop]
             interface.send(packet)
         except NoMatchingRouteException:
-            self.log.info(f"No matching route; packet ({packet[IP].src}) -> ({packet[IP].dst}) dropped")
+            self.log.debug(f"No matching route; packet ({packet[IP].src}) -> ({packet[IP].dst}) dropped")
 
 
 class Router(object):

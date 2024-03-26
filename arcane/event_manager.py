@@ -19,7 +19,6 @@ class ArcaneEventFilter(logging.Filter):
             return super().filter(record)
 
 
-
 class EventManager(ThreadedWorker):
     def __init__(self):
         self.subscriptions  = {}
@@ -28,7 +27,6 @@ class EventManager(ThreadedWorker):
         super().__init__()
 
         self.log.addFilter(self.log_filter)
-
 
 
     def wait_for_match(self, event, match_func):
@@ -41,7 +39,7 @@ class EventManager(ThreadedWorker):
         if not event in self.subscriptions:
             self.subscriptions[event] = []
             self.sync_listeners[event] = []
-    
+
     @api
     def _add_to_sync_queue(self, event, match_func, queue):
         if not event in self.sync_listeners:

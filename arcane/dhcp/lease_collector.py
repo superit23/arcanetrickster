@@ -10,12 +10,12 @@ import random
 
 class DHCPLeaseCollector(ThreadedWorker):
     def __init__(self, interface: NetworkInterface) -> None:
-        self.interface        = interface
-        self.server_ip        = None
-        self.server_mac       = None
-        self.recent           = set()
-        self.virtual_clients  = {}
-        self.xid_map          = {}
+        self.interface       = interface
+        self.server_ip       = None
+        self.server_mac      = None
+        self.recent          = set()
+        self.virtual_clients = {}
+        self.xid_map         = {}
         super().__init__()
 
 
@@ -83,10 +83,10 @@ class DHCPLeaseCollector(ThreadedWorker):
         else:
             mac_bytes = int.to_bytes(int(mac.replace(":", ""), 16), 6, 'big')
             packet    = Ether(dst="ff:ff:ff:ff:ff:ff", src=mac, type=0x0800) \
-                    / IP(src="0.0.0.0", dst="255.255.255.255") \
-                    / UDP(dport=67, sport=68) \
-                    / BOOTP(op=1, chaddr=mac_bytes, xid=xid) \
-                    / DHCP(options=[("message-type", "discover"), ("end")])
+                / IP(src="0.0.0.0", dst="255.255.255.255") \
+                / UDP(dport=67, sport=68) \
+                / BOOTP(op=1, chaddr=mac_bytes, xid=xid) \
+                / DHCP(options=[("message-type", "discover"), ("end")])
 
         self.xid_map[xid] = mac
         self.interface.send(packet)

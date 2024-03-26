@@ -2,6 +2,25 @@ import time
 import random
 from scapy.all import Ether, IP, UDP, BOOTP, DHCP
 
+
+
+def build_packet_base(op, xid: int=None, siaddr: int=None, ciaddr: int=None, secs: int=0, src_ip: str=None, dst_mac: str=None, dst_ip: str=None, yiaddr: str=None, chaddr: str=None, src_mac: str=None):
+    if op == 1:
+        sport, dport = 68, 67
+    else:
+        sport, dport = 67, 68
+
+    mac_bytes = int.to_bytes(int((chaddr or src_mac).replace(":", ""), 16), 6, 'big')
+    packet    = Ether(dst=dst_mac, src=src_mac, type=0x0800) \
+        / IP(src=src_ip, dst=dst_ip) \
+        / UDP(dport=dport, sport=sport) \
+        / BOOTP(op=op, secs=secs, chaddr=mac_bytes, xid=xid or random.randint(0, 2**32-1), 
+                siaddr=siaddr or '0.0.0.0', ciaddr=ciaddr or '0.0.0.0', yiaddr=yiaddr or '0.0.0.0',
+                flags="B")
+
+    return packet 
+
+
 class DHCPLease(object):
     def __init__(self, mac_address: str, ip_address: str, server_mac: str, server_ip: str, options: list, duration: int) -> None:
         self.mac_address = mac_address
@@ -38,49 +57,36 @@ class DHCPLease(object):
         self.options    = lease.options
 
 
-    def build_packet_base(self, op, xid: int=None, siaddr: int=None, ciaddr: int=None, secs: int=0, src_ip: str=None, dst_mac: str=None, dst_ip: str=None, yiaddr: str=None, chaddr: str=None):
-        if op == 1:
-            sport, dport = 68, 67
-        else:
-            sport, dport = 67, 68
-
-        mac_bytes = int.to_bytes(int((chaddr or self.mac_address).replace(":", ""), 16), 6, 'big')
-        packet    = Ether(dst=dst_mac or self.server_mac, src=self.mac_address, type=0x0800) \
-            / IP(src=src_ip or self.ip_address, dst=dst_ip or self.server_ip) \
-            / UDP(dport=dport, sport=sport) \
-            / BOOTP(op=op, secs=secs, chaddr=mac_bytes, xid=xid or random.randint(0, 2**32-1), 
-                    siaddr=siaddr or '0.0.0.0', ciaddr=ciaddr or '0.0.0.0', yiaddr=yiaddr or '0.0.0.0',
-                    flags="B")
-
-        return packet 
+    def client_base_kwargs(self):
+        return {"src_mac": self.mac_address, "dst_mac": self.server_mac, "src_ip": self.ip_address, "dst_ip": self.server_ip}
 
 
     def build_discover_packet(self, xid=None):
-        return self.build_packet_base(1, xid) / DHCP(options=[("message-type", "discover"), ("requested_addr", self.ip_address), ("end")])
+        return build_packet_base(1, xid, **self.client_base_kwargs()) / DHCP(options=[("message-type", "discover"), ("requested_addr", self.ip_address), ("end")])
 
 
     def build_request_packet(self, xid):
-        return self.build_packet_base(1, xid) / DHCP(options=[("message-type", "request"), ("requested_addr", self.ip_address), ("server_id", self.server_ip), ("end")])
+        return build_packet_base(1, xid, **self.client_base_kwargs()) / DHCP(options=[("message-type", "request"), ("requested_addr", self.ip_address), ("server_id", self.server_ip), ("end")])
 
 
     def build_renewal_packet(self, xid=None):
-        return self.build_packet_base(1, xid, ciaddr=self.ip_address, secs=1) / DHCP(options=[("message-type", "request"), ("end")])
+        return build_packet_base(1, xid, ciaddr=self.ip_address, secs=1, **self.client_base_kwargs()) / DHCP(options=[("message-type", "request"), ("end")])
 
 
     def build_ack_packet(self, xid, dst_mac, dst_ip, siaddr, yiaddr, src_ip, ciaddr='0.0.0.0'):
         options = [opt for opt in self.options if opt[0] not in ("server_id",)]
-        return self.build_packet_base(2, xid, dst_mac=dst_mac, dst_ip=dst_ip, src_ip=src_ip, siaddr=siaddr, chaddr=dst_mac, yiaddr=yiaddr, ciaddr=ciaddr) / DHCP(options=[("message-type", "ack"), ("server_id", siaddr), *options, ("end")])
+        return build_packet_base(2, xid, dst_mac=dst_mac, dst_ip=dst_ip, src_ip=src_ip, siaddr=siaddr, chaddr=dst_mac, yiaddr=yiaddr, ciaddr=ciaddr) / DHCP(options=[("message-type", "ack"), ("server_id", siaddr), *options, ("end")])
 
 
     def build_nak_packet(self, xid, dst_mac, dst_ip, src_ip):
-        return self.build_packet_base(2, xid, dst_mac=dst_mac, dst_ip=dst_ip, src_ip=src_ip, chaddr=dst_mac) / DHCP(options=[("message-type", "nak"), ("end")])
+        return build_packet_base(2, xid, dst_mac=dst_mac, dst_ip=dst_ip, src_ip=src_ip, chaddr=dst_mac) / DHCP(options=[("message-type", "nak"), ("end")])
 
 
     def build_offer_packet(self, xid, dst_mac, dst_ip, siaddr, yiaddr):
         options = [opt for opt in self.options if opt[0] not in ("server_id",)]
-        return self.build_packet_base(2, xid, dst_mac=dst_mac, dst_ip=dst_ip, siaddr=siaddr, yiaddr=yiaddr, chaddr=dst_mac) / DHCP(options=[("message-type", "offer"), ("server_id", siaddr), *options, ("end")])
+        return build_packet_base(2, xid, dst_mac=dst_mac, dst_ip=dst_ip, siaddr=siaddr, yiaddr=yiaddr, chaddr=dst_mac) / DHCP(options=[("message-type", "offer"), ("server_id", siaddr), *options, ("end")])
 
 
     def build_release_packet(self):
-        return self.build_packet_base(1) / DHCP(options=[("message-type", "release"), ("end")])
+        return build_packet_base(1, **self.client_base_kwargs()) / DHCP(options=[("message-type", "release"), ("end")])
 

@@ -42,7 +42,7 @@ class ARPTable(ThreadedWorker):
         self.interface.send(request)
 
 
-    @loop(0.01)
+    @loop(10e-3)
     def _scan(self):
         sleep_time = self.sweep_time / self.interface.network.num_addresses
         for ip in self.interface.network:
@@ -58,4 +58,3 @@ class ARPTable(ThreadedWorker):
             if not (packet.psrc in self.arp_table and self.arp_table[packet.psrc] == packet.hwsrc):
                 self.arp_table[packet.psrc] = packet.hwsrc
                 trigger_event(ARPTableEvent.ENTRY_CHANGED, packet.psrc, packet.hwsrc)
-
