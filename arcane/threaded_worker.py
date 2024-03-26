@@ -4,18 +4,23 @@ from queue import Queue, Empty
 import time
 
 def api(func):
-    def _wrapper(self, *args, sync_wait: int=None, **kwargs):
-        if not sync_wait:
+    '''Method decorator that sends execution contexts to the thread in a ThreadedWorker.'''
+    def _wrapper(self, *args, sync_timeout: float=None, **kwargs):
+        if not sync_timeout:
             self.mailbox.put((func, args, kwargs))
         else:
+            # We need a way to have the 'func' execute in the ThreadedWorker's thread and return the result to the callers thread
+            # We do this by having the worker send it back via a temporary shared queue.
             queue = Queue()
             def _get_result():
                 result = func(*args, **kwargs)
                 queue.put(result)
-
+            
             self.mailbox.put((_get_result, (), {}))
+
             try:
-                return queue.get(timeout=sync_wait)
+                # Return result when it's available or give up after sync_timeout
+                return queue.get(timeout=sync_timeout)
             except Empty:
                 raise TimeoutError
 

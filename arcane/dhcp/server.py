@@ -1,8 +1,7 @@
 from arcane.dhcp.lease_generator import DHCPLeaseGenerator
-from arcane.network.network_interface import NetworkInterface
+from arcane.network.interface import NetworkInterface
 from arcane.events import NetworkInterfaceEvent, DHCPServerEvent
 from arcane.event_manager import on_event, trigger_event
-from arcane.network.network_interface import NetworkInterface
 from arcane.threaded_worker import ThreadedWorker, api
 from arcane.exceptions import DHCPLeaseExpiredException
 from scapy.all import DHCP, IP, BOOTP

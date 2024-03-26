@@ -91,6 +91,7 @@ class NetworkInterface(ThreadedWorker):
     def send(self, data: bytes):
         '''Sends data in bytes over the socket.'''
         self.socket.send(bytes(data))
+#        trigger_event(NetworkInterfaceEvent.WRITE, self.name, data)
 
 
     def _run(self):

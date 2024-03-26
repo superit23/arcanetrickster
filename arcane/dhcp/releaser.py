@@ -35,7 +35,7 @@ class DHCPReleaser(ThreadedWorker):
             if str(ip) not in self.lease_generator.claimed and str(ip) != self.interface.ip_address:
                 try:
                     time.sleep(sleep_time)
-                    mac = self.interface.arp_table.get_or_ask(str(ip), sync_wait=0.1)
+                    mac = self.interface.arp_table.get_or_ask(str(ip), sync_timeout=0.1)
                     self.log.info(f"Releasing {ip} for {mac}")
 
                     lease = DHCPLease(
@@ -49,4 +49,4 @@ class DHCPReleaser(ThreadedWorker):
                     self.interface.send(lease.build_release_packet())
                     trigger_event(DHCPReleaseEvent.LEASE_RELEASED, lease)
                 except TimeoutError:
-                    pass
+                    self.log.debug(f"Timeout: {ip} did not respond to ARP request")

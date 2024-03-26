@@ -40,13 +40,15 @@ class DHCPLeaseCollector(ThreadedWorker):
             mac = self.xid_map[data[BOOTP].xid]
             del self.xid_map[data[BOOTP].xid]
 
+            options = [(k,v) for k,v in [o for o in data[DHCP].options if o not in ("end", "pad")] if k != "message-type"]
+
             lease = DHCPLease(
                 mac,
                 data[BOOTP].yiaddr,
                 data.src,
                 data[BOOTP].siaddr,
-                [(k,v) for k,v in data[DHCP].options[:-1] if k != "message-type"],
-                dict(data[DHCP].options[:-1])['lease_time']
+                options,
+                dict(options)['lease_time']
             )
 
             self.virtual_clients[mac] = lease
@@ -75,16 +77,16 @@ class DHCPLeaseCollector(ThreadedWorker):
                 return
 
 
-            # Let the lease ask for the same IP if possible
-            if lease:
-                packet = lease.build_discover_packet(xid=xid)
-            else:
-                mac_bytes = int.to_bytes(int(mac.replace(":", ""), 16), 6, 'big')
-                packet    = Ether(dst="ff:ff:ff:ff:ff:ff", src=mac, type=0x0800) \
+        # Let the lease ask for the same IP if possible
+        if lease:
+            packet = lease.build_discover_packet(xid=xid)
+        else:
+            mac_bytes = int.to_bytes(int(mac.replace(":", ""), 16), 6, 'big')
+            packet    = Ether(dst="ff:ff:ff:ff:ff:ff", src=mac, type=0x0800) \
                     / IP(src="0.0.0.0", dst="255.255.255.255") \
                     / UDP(dport=67, sport=68) \
                     / BOOTP(op=1, chaddr=mac_bytes, xid=xid) \
                     / DHCP(options=[("message-type", "discover"), ("end")])
 
-            self.xid_map[xid] = mac
-            self.interface.send(packet)
+        self.xid_map[xid] = mac
+        self.interface.send(packet)

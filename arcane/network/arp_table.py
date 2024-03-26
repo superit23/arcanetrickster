@@ -34,7 +34,7 @@ class ARPTable(ThreadedWorker):
             return mac
         
         self.send_arp(ip)
-        return _event_man.wait_for_match(ARPTableEvent.ENTRY_CHANGED, lambda psrc, hwsrc: psrc == ip)
+        return _event_man.wait_for_match(ARPTableEvent.ENTRY_CHANGED, (lambda event, psrc, hwsrc: psrc == ip))
 
 
     def send_arp(self, ip: str):
@@ -44,11 +44,10 @@ class ARPTable(ThreadedWorker):
 
     @loop(0.01)
     def _scan(self):
-        while not self.event.is_set():
-            sleep_time = self.sweep_time / self.interface.network.num_addresses
-            for ip in self.interface.network:
-                time.sleep(sleep_time)
-                self.send_arp(ip)
+        sleep_time = self.sweep_time / self.interface.network.num_addresses
+        for ip in self.interface.network:
+            time.sleep(sleep_time)
+            self.send_arp(ip)
 
 
 

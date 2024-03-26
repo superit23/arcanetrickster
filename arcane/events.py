@@ -2,7 +2,8 @@ from enum import Enum, auto
 
 
 class NetworkInterfaceEvent(Enum):
-    READ = auto()
+    READ  = auto()
+    WRITE = auto()
 
 class DHCPLeaseCollectorEvent(Enum):
     NEW_LEASE = auto()
@@ -19,3 +20,11 @@ class ARPTableEvent(Enum):
 class DHCPServerEvent(Enum):
     LEASE_OFFERED = auto()
     LEASE_DENIED  = auto()
+
+class DNSClientEvent(Enum):
+    QUERY_RECEIVED    = auto()
+    RESPONSE_RECEIVED = auto()
+
+class DNSServerEvent(Enum):
+    QUERY_RECEIVED = auto()
+    RESPONSE_SENT  = auto()

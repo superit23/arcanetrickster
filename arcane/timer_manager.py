@@ -8,8 +8,8 @@ class TimerManager(ThreadedWorker):
         super().__init__()
 
 
-    def add_timer(self, sleep_time, callback, sig):
-        self.timers.append((time.time() + sleep_time, callback, sig))
+    def add_timer(self, sleep_time, callback: 'function', params):
+        self.timers.append((time.time() + sleep_time, callback, params))
         self.timers.sort(key=lambda item: item[0])
 
 
@@ -18,16 +18,17 @@ class TimerManager(ThreadedWorker):
             time.sleep(1e-3)
             idx = binary_search_list(self.timers, time.time(), key=lambda item: item[0], fuzzy=True)
 
-            for _, callback, (s, args, kwargs) in self.timers[:idx]:
-                callback(s, *args, **kwargs)
+            for _, callback, (other_self, args, kwargs) in self.timers[:idx]:
+                callback(other_self, *args, **kwargs)
 
             del self.timers[:idx]
 
 
 _timer_man = TimerManager()
 
+
 def loop(sleep_time):
-    def _outwrapper(func):
+    def _outwrapper(func: 'function'):
         api_func = api(func)
 
         def _wrapper(self, *args, **kwargs):
