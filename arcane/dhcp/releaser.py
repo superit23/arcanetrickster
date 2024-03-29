@@ -20,11 +20,6 @@ class DHCPReleaser(ThreadedWorker):
 
     @loop(0.25)
     def _scan(self):
-        # We sleep 1 seconds per sweep to make CPU usage negigible when we own all leases
-        # while also adding negigible delay between sweeps. One second was also purposefully
-        # chosen to be greater than the DHCPLeaseCollector's iteration time. This gives the
-        # collector time to take those IP addresses.
-
         # By not sleeping when encountering IPs on leases we own, we ensure that the
         # sweep time of each iteration decreases as we steal leases. This effectively
         # fixes the pacing of the packets in exchange for convergence

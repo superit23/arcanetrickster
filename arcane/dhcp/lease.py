@@ -9,13 +9,16 @@ def build_packet_base(op, xid: int=None, siaddr: int=None, ciaddr: int=None, sec
         sport, dport = 68, 67
     else:
         sport, dport = 67, 68
+    
+    ANY_IP = '0.0.0.0'
+    ALL_IP = '255.255.255.255'
 
     mac_bytes = int.to_bytes(int((chaddr or src_mac).replace(":", ""), 16), 6, 'big')
-    packet    = Ether(dst=dst_mac, src=src_mac, type=0x0800) \
-        / IP(src=src_ip, dst=dst_ip) \
+    packet    = Ether(dst=dst_mac or 'ff:ff:ff:ff:ff:ff', src=src_mac, type=0x0800) \
+        / IP(src=src_ip or ANY_IP, dst=dst_ip or ALL_IP) \
         / UDP(dport=dport, sport=sport) \
         / BOOTP(op=op, secs=secs, chaddr=mac_bytes, xid=xid or random.randint(0, 2**32-1), 
-                siaddr=siaddr or '0.0.0.0', ciaddr=ciaddr or '0.0.0.0', yiaddr=yiaddr or '0.0.0.0',
+                siaddr=siaddr or ANY_IP, ciaddr=ciaddr or ANY_IP, yiaddr=yiaddr or ANY_IP,
                 flags="B")
 
     return packet 
@@ -78,7 +81,8 @@ class DHCPLease(object):
         return build_packet_base(2, xid, dst_mac=dst_mac, dst_ip=dst_ip, src_ip=src_ip, siaddr=siaddr, chaddr=dst_mac, yiaddr=yiaddr, ciaddr=ciaddr) / DHCP(options=[("message-type", "ack"), ("server_id", siaddr), *options, ("end")])
 
 
-    def build_nak_packet(self, xid, dst_mac, dst_ip, src_ip):
+    @staticmethod
+    def build_nak_packet(xid, dst_mac, dst_ip, src_ip):
         return build_packet_base(2, xid, dst_mac=dst_mac, dst_ip=dst_ip, src_ip=src_ip, chaddr=dst_mac) / DHCP(options=[("message-type", "nak"), ("end")])
 
 

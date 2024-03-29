@@ -8,7 +8,7 @@ class DHCPSubleaser(DHCPLeaseGenerator):
         self.renewer   = DHCPLeaseRenewer(interface)
         self.collector = DHCPLeaseCollector(interface)
         self.interface = interface
-        self.claimed   = {}
+        super().__init__()
 
 
     @property

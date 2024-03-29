@@ -38,16 +38,18 @@ class ARPTable(ThreadedWorker):
 
 
     def send_arp(self, ip: str):
-        request = Ether(dst='ff:ff:ff:ff:ff:ff')/ARP(pdst=str(ip))
+        request = Ether(src=self.interface.mac_address, dst='ff:ff:ff:ff:ff:ff')/ARP(psrc=self.interface.ip_address, pdst=str(ip))
         self.interface.send(request)
 
 
     @loop(10e-3)
     def _scan(self):
-        sleep_time = self.sweep_time / self.interface.network.num_addresses
-        for ip in self.interface.network:
-            time.sleep(sleep_time)
-            self.send_arp(ip)
+        # Make sure the interface has an IP first
+        if self.interface.is_up() and self.interface.subnet_mask:
+            sleep_time = self.sweep_time / self.interface.network.num_addresses
+            for ip in self.interface.network:
+                time.sleep(sleep_time)
+                self.send_arp(ip)
 
 
 

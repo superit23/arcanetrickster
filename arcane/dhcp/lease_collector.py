@@ -4,7 +4,7 @@ from arcane.event_manager import on_event, trigger_event
 from arcane.timer_manager import loop
 from arcane.utilities import random_mac
 from arcane.network.interface import NetworkInterface
-from arcane.dhcp.lease import DHCPLease
+from arcane.dhcp.lease import DHCPLease, build_packet_base
 from scapy.all import DHCP, BOOTP, IP, Ether, UDP
 import random
 
@@ -81,12 +81,7 @@ class DHCPLeaseCollector(ThreadedWorker):
         if lease:
             packet = lease.build_discover_packet(xid=xid)
         else:
-            mac_bytes = int.to_bytes(int(mac.replace(":", ""), 16), 6, 'big')
-            packet    = Ether(dst="ff:ff:ff:ff:ff:ff", src=mac, type=0x0800) \
-                / IP(src="0.0.0.0", dst="255.255.255.255") \
-                / UDP(dport=67, sport=68) \
-                / BOOTP(op=1, chaddr=mac_bytes, xid=xid) \
-                / DHCP(options=[("message-type", "discover"), ("end")])
+            packet = build_packet_base(op=1, src_mac=mac) / DHCP(options=[("message-type", "discover"), ("end")])
 
         self.xid_map[xid] = mac
         self.interface.send(packet)

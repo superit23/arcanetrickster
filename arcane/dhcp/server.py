@@ -1,4 +1,5 @@
 from arcane.dhcp.lease_generator import DHCPLeaseGenerator
+from arcane.dhcp.lease import DHCPLease
 from arcane.network.interface import NetworkInterface
 from arcane.events import NetworkInterfaceEvent, DHCPServerEvent
 from arcane.event_manager import on_event, trigger_event
@@ -36,8 +37,6 @@ class DHCPServer(ThreadedWorker):
         if ("message-type", 1) in packet[DHCP].options:
             self.log.debug(f"Handling DHCPDISCOVER for {packet.src}")
 
-            packet.show()
-
             if packet[IP].src == "0.0.0.0":
                 dst_ip = "255.255.255.255"
                 ip     = self.lease_generator.mac_ip_map.get(packet.src, "DNE")
@@ -63,8 +62,6 @@ class DHCPServer(ThreadedWorker):
         if ("message-type", 3) in packet[DHCP].options:
             self.log.debug(f"Handling DHCPREQUEST for {packet.src}")
 
-            packet.show()
-
             if packet[IP].src == "0.0.0.0":
                 if packet[BOOTP].ciaddr == '0.0.0.0':
                     lease_ip = [opt for opt in packet[DHCP].options if opt[0] == "requested_addr"][0][1]
@@ -81,7 +78,7 @@ class DHCPServer(ThreadedWorker):
                 self.interface.send(ack)
 
             except DHCPLeaseExpiredException:
-                self.log.info(f"Sending DHCPNAK to {packet.src}")
-                nak = self.lease_generator.leases[0].build_nak_packet(xid=packet[BOOTP].xid, dst_ip=packet[IP].src, dst_mac=packet.src, src_ip=self.interface.ip_address)
+                self.log.info(f"Denying lease for {lease_ip} to {packet.src}")
+                nak = DHCPLease.build_nak_packet(xid=packet[BOOTP].xid, dst_ip=packet[IP].src, dst_mac=packet.src, src_ip=self.interface.ip_address)
                 self.interface.send(nak)
-                trigger_event(DHCPServerEvent.LEASE_DENIED, packet.src, lease)
+                trigger_event(DHCPServerEvent.LEASE_DENIED, packet.src, lease_ip)
