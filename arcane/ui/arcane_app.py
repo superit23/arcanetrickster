@@ -1,7 +1,7 @@
 from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Static, DataTable
 from textual.containers import ScrollableContainer
-from arcane.event_manager import on_event
+from arcane.runtime import on_event
 from arcane.events import NetworkInterfaceEvent
 
 class ArcaneApp(App):
@@ -30,7 +30,7 @@ class ArcaneApp(App):
     
 
     @on_event(NetworkInterfaceEvent.READ)
-    def add_row(self, iface, data):
+    def add_row(self, iface, proto, data):
         self.query_one(DataTable).add_row(NetworkInterfaceEvent.READ, (iface, data), {})
         
 

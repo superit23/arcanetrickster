@@ -1,8 +1,7 @@
 from arcane.dhcp.lease_generator import DHCPLeaseGenerator
 from arcane.network.interface import NetworkInterface
 from arcane.events import DHCPReleaseEvent
-from arcane.event_manager import trigger_event
-from arcane.timer_manager import loop
+from arcane.runtime import loop, trigger_event
 from arcane.network.interface import NetworkInterface
 from arcane.threaded_worker import ThreadedWorker
 from arcane.dhcp.lease import DHCPLease

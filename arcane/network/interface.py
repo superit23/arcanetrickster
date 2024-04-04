@@ -1,17 +1,30 @@
 from arcane.threaded_worker import ThreadedWorker, api
 from arcane.network.arp_table import ARPTable
-from arcane.event_manager import trigger_event, _event_man
-from arcane.timer_manager import loop
+from arcane.runtime import loop, trigger_event
 from arcane.events import NetworkInterfaceEvent
 from arcane.network.linux import KernelInterface
-from scapy.all import Ether, get_if_hwaddr, get_if_addr, conf, ltoa
+from scapy.all import Ether, get_if_hwaddr, get_if_addr, conf, ltoa, ARP, IP
 from ipaddress import IPv4Address, IPv4Network, NetmaskValueError
+from enum import Enum
 from pyroute2 import NDB as Ndb
 
 import select
 import socket
 
 NDB = Ndb(log='info')
+
+class Proto(Enum):
+    IP  = 0x0800
+    ARP = 0x0806
+
+def create_raw_socket(name: str, proto: Proto):
+    sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW)
+    sock.bind((name, proto.value))
+
+    # Set socket to non-binding to allow for multi-threading without lockup
+    sock.setblocking(0)
+    return sock
+
 
 class NetworkInterface(ThreadedWorker, KernelInterface):
     '''This class creates a virtual network interface and a non-binding socket. 
@@ -25,14 +38,11 @@ class NetworkInterface(ThreadedWorker, KernelInterface):
             self.socket = sock
         else:
             # Create Socket and bind it
-            self.socket = socket.socket(socket.AF_PACKET, socket.SOCK_RAW)
-            self.socket.bind((self.name, 0x0800))
-
-            # Set socket to non-binding to allow for multi-threading without lockup
-            self.socket.setblocking(0)
+            self.socket = create_raw_socket(self.name, Proto.IP)
             self.set_promiscious()
-
-        self.arp_table = ARPTable(self)
+        
+        self.arp_socket = create_raw_socket(self.name, Proto.ARP)
+        self.arp_table  = ARPTable(self)
         super().__init__()
 
 
@@ -126,11 +136,15 @@ class NetworkInterface(ThreadedWorker, KernelInterface):
 
     @loop(1e-3)
     def _loop(self):
-        r, _w, _err = select.select([self.socket], [], [], 10e-3)
+        r, _w, _err = select.select([self.socket, self.arp_socket], [], [], 10e-3)
 
         if self.socket in r:
             data = self.socket.recv(4 * 1024)
-            trigger_event(NetworkInterfaceEvent.READ, self, Ether(data))
+            trigger_event(NetworkInterfaceEvent.READ, self, Proto.IP, Ether(data))
+
+        if self.arp_socket in r:
+            data = self.arp_socket.recv(4 * 1024)
+            trigger_event(NetworkInterfaceEvent.READ, self, Proto.ARP, Ether(data))
 
 
 class VirtualSocket(object):

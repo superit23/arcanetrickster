@@ -22,22 +22,3 @@ class TimerManager(ThreadedWorker):
                 callback(other_self, *args, **kwargs)
 
             del self.timers[:idx]
-
-
-_timer_man = TimerManager()
-
-
-def loop(sleep_time):
-    def _outwrapper(func: 'function'):
-        api_func = api(func)
-
-        def _wrapper(self, *args, **kwargs):
-            api_func(self, *args, **kwargs)
-            _timer_man.add_timer(sleep_time, _wrapper, (self, args, kwargs))
-
-        # Initialize the loop
-        api_func._loop_init = _wrapper
-        return api_func
-
-    return _outwrapper
-

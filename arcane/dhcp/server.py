@@ -2,17 +2,18 @@ from arcane.dhcp.lease_generator import DHCPLeaseGenerator
 from arcane.dhcp.lease import DHCPLease
 from arcane.network.interface import NetworkInterface
 from arcane.events import NetworkInterfaceEvent, DHCPServerEvent
-from arcane.event_manager import on_event, trigger_event
-from arcane.threaded_worker import ThreadedWorker, api
+from arcane.runtime import on_event, trigger_event, api
+from arcane.threaded_worker import ThreadedWorker
 from arcane.exceptions import DHCPLeaseExpiredException
 from scapy.all import DHCP, IP, BOOTP
 
 
 
 class DHCPServer(ThreadedWorker):
-    def __init__(self, interface: NetworkInterface, lease_generator: DHCPLeaseGenerator) -> None:
+    def __init__(self, interface: NetworkInterface, lease_generator: DHCPLeaseGenerator, **options) -> None:
         self.lease_generator = lease_generator
         self.interface       = interface
+        self.options         = options
         super().__init__()
 
 
@@ -27,10 +28,16 @@ class DHCPServer(ThreadedWorker):
 
     @on_event(NetworkInterfaceEvent.READ)
     @api
-    def handle_packet(self, iface, packet):
+    def handle_packet(self, iface, proto, packet):
         if DHCP in packet:
             self.handle_dhcp_discover(packet)
             self.handle_dhcp_request(packet)
+
+
+    def _inject_options(self, lease):
+            lease = lease.copy()
+            lease.options.update(self.options)
+            return lease
 
 
     def handle_dhcp_discover(self, packet):
@@ -50,7 +57,9 @@ class DHCPServer(ThreadedWorker):
                 lease = self.lease_generator.renew(ip)
             else:
                 lease = self.lease_generator.claim(packet.src)
-
+            
+            # Inject our options into it
+            lease = self._inject_options(lease)
 
             self.log.info(f"Offering {lease.ip_address} to {packet.src}")
 
@@ -72,6 +81,7 @@ class DHCPServer(ThreadedWorker):
 
             try:
                 lease = self.lease_generator.renew(lease_ip)
+                lease = self._inject_options(lease)
                 self.log.info(f"Sending lease for {lease.ip_address} to {packet.src}")
 
                 ack = lease.build_ack_packet(xid=packet[BOOTP].xid, dst_ip=packet[IP].src, dst_mac=packet.src, siaddr=self.interface.ip_address, yiaddr=lease.ip_address, ciaddr=packet[BOOTP].ciaddr, src_ip=self.interface.ip_address)

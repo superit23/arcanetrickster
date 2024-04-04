@@ -1,7 +1,8 @@
 import time
 import random
 from scapy.all import Ether, IP, UDP, BOOTP, DHCP
-
+from arcane.base_object import BaseObject
+from copy import copy
 
 
 def build_packet_base(op, xid: int=None, siaddr: int=None, ciaddr: int=None, secs: int=0, src_ip: str=None, dst_mac: str=None, dst_ip: str=None, yiaddr: str=None, chaddr: str=None, src_mac: str=None):
@@ -24,7 +25,7 @@ def build_packet_base(op, xid: int=None, siaddr: int=None, ciaddr: int=None, sec
     return packet 
 
 
-class DHCPLease(object):
+class DHCPLease(BaseObject):
     def __init__(self, mac_address: str, ip_address: str, server_mac: str, server_ip: str, options: list, duration: int) -> None:
         self.mac_address = mac_address
         self.ip_address  = ip_address
@@ -45,6 +46,10 @@ class DHCPLease(object):
     def __hash__(self):
         return hash((self.mac_address, self.ip_address, self.server_mac, self.server_ip))
 
+
+    @staticmethod
+    def parse_options(options):
+        return dict([(k,v) for k,v in [o for o in options if o not in ("end", "pad")] if k != "message-type"])
 
     @property
     def expiration(self):
@@ -77,8 +82,11 @@ class DHCPLease(object):
 
 
     def build_ack_packet(self, xid, dst_mac, dst_ip, siaddr, yiaddr, src_ip, ciaddr='0.0.0.0'):
-        options = [opt for opt in self.options if opt[0] not in ("server_id",)]
-        return build_packet_base(2, xid, dst_mac=dst_mac, dst_ip=dst_ip, src_ip=src_ip, siaddr=siaddr, chaddr=dst_mac, yiaddr=yiaddr, ciaddr=ciaddr) / DHCP(options=[("message-type", "ack"), ("server_id", siaddr), *options, ("end")])
+        options = copy(self.options)
+        if "server_id" in options:
+            del options['server_id']
+
+        return build_packet_base(2, xid, dst_mac=dst_mac, dst_ip=dst_ip, src_ip=src_ip, siaddr=siaddr, chaddr=dst_mac, yiaddr=yiaddr, ciaddr=ciaddr) / DHCP(options=[("message-type", "ack"), ("server_id", siaddr), *list(options.items()), ("end")])
 
 
     @staticmethod
@@ -87,8 +95,11 @@ class DHCPLease(object):
 
 
     def build_offer_packet(self, xid, dst_mac, dst_ip, siaddr, yiaddr):
-        options = [opt for opt in self.options if opt[0] not in ("server_id",)]
-        return build_packet_base(2, xid, dst_mac=dst_mac, dst_ip=dst_ip, siaddr=siaddr, yiaddr=yiaddr, chaddr=dst_mac) / DHCP(options=[("message-type", "offer"), ("server_id", siaddr), *options, ("end")])
+        options = copy(self.options)
+        if "server_id" in options:
+            del options['server_id']
+
+        return build_packet_base(2, xid, dst_mac=dst_mac, dst_ip=dst_ip, siaddr=siaddr, yiaddr=yiaddr, chaddr=dst_mac) / DHCP(options=[("message-type", "offer"), ("server_id", siaddr), *list(options.items()), ("end")])
 
 
     def build_release_packet(self):

@@ -1,5 +1,5 @@
 from arcane.events import DNSClientEvent
-from arcane.event_manager import on_event, trigger_event
+from arcane.runtime import on_event, trigger_event
 from arcane.threaded_worker import api
 from arcane.dns.endpoint import DNSEndpoint
 from dnslib.dns import DNSRecord, DNSError, QTYPE

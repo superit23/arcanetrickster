@@ -34,7 +34,7 @@ class KernelInterface(object):
     def set_promiscious(self):
         ifr = self.get_current()
         ifr.ifr_flags |= KernelFlags.IFF_PROMISC.value
-        fcntl.ioctl(self.fd, KernelFlags.SIOCSIFFLAGS, ifr)
+        fcntl.ioctl(self.fd, KernelFlags.SIOCSIFFLAGS.value, ifr)
 
 
     def set_tap(self):

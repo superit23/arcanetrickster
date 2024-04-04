@@ -29,10 +29,10 @@ class EventManager(ThreadedWorker):
         self.log.addFilter(self.log_filter)
 
 
-    def wait_for_match(self, event, match_func):
+    def wait_for_match(self, event, match_func, timeout: float=None):
         queue = Queue()
         self._add_to_sync_queue(event, match_func, queue)
-        return queue.get()
+        return queue.get(timeout=timeout)
 
 
     def _check_init_event(self, event):
@@ -52,7 +52,7 @@ class EventManager(ThreadedWorker):
     def subscribe(self, event: 'Enum', callback):
         self._check_init_event(event)
 
-        self.log.info(f"Appending callback for {event}")
+        self.log.info(f"Appending callback for {event} for {callback}")
         self.subscriptions[event].append(callback)
 
 
@@ -63,7 +63,7 @@ class EventManager(ThreadedWorker):
         self.log.info(f"Event occurred: {event} {args}", extra={"event": event})
         for subscriber in self.subscriptions[event]:
             subscriber(*args, **kwargs)
-        
+
         if event in self.sync_listeners:
             for match_func, queue in self.sync_listeners[event]:
                 if match_func(event, *args, **kwargs):
@@ -71,18 +71,3 @@ class EventManager(ThreadedWorker):
 
 
             self.sync_listeners[event] = []
-            
-
-
-_event_man = EventManager()
-
-def trigger_event(event: 'Enum', *args, **kwargs):
-    _event_man.trigger_event(event, *args, **kwargs)
-
-
-def on_event(event: 'Enum'):
-    def _wrapper(func):
-        func._sub_init = (_event_man, event)
-        return func
-
-    return _wrapper

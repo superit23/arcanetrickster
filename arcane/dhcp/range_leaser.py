@@ -19,7 +19,7 @@ class DHCPRangeLeaser(DHCPLeaseGenerator):
         super().__init__()
 
         lease_range  = range(int.from_bytes(self.ip_address_start.packed, 'big'), int.from_bytes(self.ip_address_stop.packed, 'big')+1)
-        self._leases = [DHCPLease(random_mac(), str(IPv4Address(ip_int)), interface.mac_address, interface.ip_address, list(self.options.items()), self.options['lease_time']) for ip_int in lease_range]
+        self._leases = [DHCPLease(random_mac(), str(IPv4Address(ip_int)), interface.mac_address, interface.ip_address, self.options, self.options['lease_time']) for ip_int in lease_range]
 
 
     @property

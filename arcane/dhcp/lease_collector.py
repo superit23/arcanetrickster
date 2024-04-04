@@ -1,7 +1,6 @@
-from arcane.threaded_worker import ThreadedWorker, api
+from arcane.threaded_worker import ThreadedWorker
 from arcane.events import NetworkInterfaceEvent, DHCPLeaseRenewerEvent, DHCPReleaseEvent, DHCPLeaseCollectorEvent
-from arcane.event_manager import on_event, trigger_event
-from arcane.timer_manager import loop
+from arcane.runtime import loop, on_event, trigger_event, api
 from arcane.utilities import random_mac
 from arcane.network.interface import NetworkInterface
 from arcane.dhcp.lease import DHCPLease, build_packet_base
@@ -27,9 +26,9 @@ class DHCPLeaseCollector(ThreadedWorker):
 
     @on_event(NetworkInterfaceEvent.READ)
     @api
-    def handle_offer_callback(self, iface, data):
+    def handle_offer_callback(self, iface, proto, data):
         if DHCP in data and data[BOOTP].xid in self.xid_map:
-            self.log.debug(f"Creating lease: MAC {data.dst} IP {data[BOOTP].yiaddr} Options {data[DHCP].options}")
+            self.log.debug(f"Creating lease: MAC: {data.dst}, IP: {data[BOOTP].yiaddr}, Options: {data[DHCP].options}")
 
             # Grab server info on first packet
             if not self.server_ip:
@@ -40,7 +39,7 @@ class DHCPLeaseCollector(ThreadedWorker):
             mac = self.xid_map[data[BOOTP].xid]
             del self.xid_map[data[BOOTP].xid]
 
-            options = [(k,v) for k,v in [o for o in data[DHCP].options if o not in ("end", "pad")] if k != "message-type"]
+            options = DHCPLease.parse_options(data[DHCP].options)
 
             lease = DHCPLease(
                 mac,
@@ -48,7 +47,7 @@ class DHCPLeaseCollector(ThreadedWorker):
                 data.src,
                 data[BOOTP].siaddr,
                 options,
-                dict(options)['lease_time']
+                options['lease_time']
             )
 
             self.virtual_clients[mac] = lease
@@ -58,7 +57,11 @@ class DHCPLeaseCollector(ThreadedWorker):
 
 
     @on_event(DHCPReleaseEvent.LEASE_RELEASED)
-    @loop(0.5)
+    def handle_lease(self, lease):
+        self._loop()
+
+
+    @loop(0.25)
     def _loop(self):
         xid   = random.randint(0, 2**32-1)
         lease = None
@@ -81,7 +84,8 @@ class DHCPLeaseCollector(ThreadedWorker):
         if lease:
             packet = lease.build_discover_packet(xid=xid)
         else:
-            packet = build_packet_base(op=1, src_mac=mac) / DHCP(options=[("message-type", "discover"), ("end")])
+            packet = build_packet_base(xid=xid, op=1, src_mac=mac) / DHCP(options=[("message-type", "discover"), ("end")])
 
         self.xid_map[xid] = mac
         self.interface.send(packet)
+        self.log.debug(f"Sending discover. XID: {hex(xid)}, MAC: {mac}")

@@ -3,8 +3,7 @@ from arcane.network.interface import NetworkInterface
 from arcane.events import DHCPLeaseCollectorEvent, DHCPLeaseRenewerEvent
 from arcane.dhcp.lease import DHCPLease
 from arcane.utilities import binary_search_list
-from arcane.event_manager import trigger_event, on_event
-from arcane.timer_manager import loop
+from arcane.runtime import loop, trigger_event, on_event
 from queue import Queue, Empty
 import time
 import random

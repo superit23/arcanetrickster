@@ -1,7 +1,7 @@
 from arcane.base_object import BaseObject
 from arcane.network.interface import NetworkInterface
 from arcane.exceptions import NoMatchingRouteException
-from arcane.event_manager import on_event
+from arcane.runtime import on_event
 from arcane.events import NetworkInterfaceEvent
 from ipaddress import IPv4Address, IPv4Network
 from copy import deepcopy
@@ -214,9 +214,9 @@ class Router(object):
 
 
     @on_event(NetworkInterfaceEvent.READ)
-    def handle_packet_recv(self, iface, packet):
+    def handle_packet_recv(self, iface, proto, packet):
         if iface in self.interfaces:
-            # NATs MUST BE commutative
+            # NATs MUST BE COMMUTATIVE
             nats = self.translate_table.get(iface, [])
 
             for nat in nats:
