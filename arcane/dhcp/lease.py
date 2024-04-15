@@ -48,8 +48,23 @@ class DHCPLease(BaseObject):
 
 
     @staticmethod
-    def parse_options(options):
-        return dict([(k,v) for k,v in [o for o in options if o not in ("end", "pad")] if k != "message-type"])
+    def parse_options(options, strip_type: bool=True):
+        return dict([(k,v) for k,v in [o for o in options if o not in ("end", "pad")] if not strip_type or k != "message-type"])
+
+
+    @staticmethod
+    def parse_client_ip(packet):
+        if packet[IP].src == "0.0.0.0":
+            if packet[BOOTP].ciaddr == '0.0.0.0':
+                lease_ip = [opt for opt in packet[DHCP].options if opt[0] == "requested_addr"][0][1]
+            else:
+                lease_ip = packet[BOOTP].ciaddr
+        else:
+            lease_ip = packet[IP].src
+        
+        return lease_ip
+
+
 
     @property
     def expiration(self):
@@ -103,5 +118,4 @@ class DHCPLease(BaseObject):
 
 
     def build_release_packet(self):
-        return build_packet_base(1, **self.client_base_kwargs()) / DHCP(options=[("message-type", "release"), ("end")])
-
+        return build_packet_base(1, ciaddr=self.ip_address, **self.client_base_kwargs()) / DHCP(options=[("message-type", "release"), ("server_id", self.server_ip), *list(self.options.items()), ("end")])

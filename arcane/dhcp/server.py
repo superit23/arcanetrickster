@@ -52,19 +52,29 @@ class DHCPServer(ThreadedWorker):
                 ip     = dst_ip
 
 
-            # Give them their current IP if we have it
-            if ip in self.lease_generator.claimed:
-                lease = self.lease_generator.renew(ip)
-            else:
-                lease = self.lease_generator.claim(packet.src)
-            
-            # Inject our options into it
-            lease = self._inject_options(lease)
+            try:
+                # Give them their current IP if we have it
+                if ip in self.lease_generator.claimed and self.lease_generator.claimed[ip][2] == packet.src:
+                    lease = self.lease_generator.renew(ip)
+                    lease = self._inject_options(lease)
+                    self.log.info(f"Renewing {lease.ip_address} for {packet.src}")
+                else:
+                    lease = self.lease_generator.claim(packet.src)
+                    lease = self._inject_options(lease)
+                    self.log.info(f"Offering {lease.ip_address} to {packet.src}")
+                
+                # Inject our options into it
+                lease = self._inject_options(lease)
 
-            self.log.info(f"Offering {lease.ip_address} to {packet.src}")
+                self.interface.send(lease.build_offer_packet(xid=packet[BOOTP].xid, dst_ip=dst_ip, dst_mac=packet.src, siaddr=self.interface.ip_address, yiaddr=lease.ip_address))
+                trigger_event(DHCPServerEvent.LEASE_OFFERED, packet.src, lease)
 
-            self.interface.send(lease.build_offer_packet(xid=packet[BOOTP].xid, dst_ip=dst_ip, dst_mac=packet.src, siaddr=self.interface.ip_address, yiaddr=lease.ip_address))
-            trigger_event(DHCPServerEvent.LEASE_OFFERED, packet.src, lease)
+            except DHCPLeaseExpiredException:
+                self.log.info(f"Denying lease for {lease_ip} to {packet.src}")
+                nak = DHCPLease.build_nak_packet(xid=packet[BOOTP].xid, dst_ip=packet[IP].src, dst_mac=packet.src, src_ip=self.interface.ip_address)
+                self.interface.send(nak)
+                trigger_event(DHCPServerEvent.LEASE_DENIED, packet.src, lease_ip)
+
 
 
     def handle_dhcp_request(self, packet):
@@ -79,13 +89,17 @@ class DHCPServer(ThreadedWorker):
             else:
                 lease_ip = packet[IP].src
 
-            try:
-                lease = self.lease_generator.renew(lease_ip)
-                lease = self._inject_options(lease)
-                self.log.info(f"Sending lease for {lease.ip_address} to {packet.src}")
 
-                ack = lease.build_ack_packet(xid=packet[BOOTP].xid, dst_ip=packet[IP].src, dst_mac=packet.src, siaddr=self.interface.ip_address, yiaddr=lease.ip_address, ciaddr=packet[BOOTP].ciaddr, src_ip=self.interface.ip_address)
-                self.interface.send(ack)
+            try:
+                if lease_ip in self.lease_generator.claimed and self.lease_generator.claimed[lease_ip][2] == packet.src:
+                    lease = self.lease_generator.renew(lease_ip)
+                    lease = self._inject_options(lease)
+                    self.log.info(f"Sending lease for {lease.ip_address} to {packet.src}")
+
+                    ack = lease.build_ack_packet(xid=packet[BOOTP].xid, dst_ip=packet[IP].src, dst_mac=packet.src, siaddr=self.interface.ip_address, yiaddr=lease.ip_address, ciaddr=packet[BOOTP].ciaddr, src_ip=self.interface.ip_address)
+                    self.interface.send(ack)
+                else:
+                    raise DHCPLeaseExpiredException
 
             except DHCPLeaseExpiredException:
                 self.log.info(f"Denying lease for {lease_ip} to {packet.src}")

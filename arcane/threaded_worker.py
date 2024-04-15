@@ -4,34 +4,6 @@ from threading import Thread, Event, get_ident
 from queue import Queue, Empty
 import time
 
-# def api(func):
-#     '''Method decorator that sends execution contexts to the thread in a ThreadedWorker.'''
-#     def _wrapper(self, *args, sync_timeout: float=None, do_after: float=None **kwargs):
-#         if sync_timeout:
-#             # We need a way to have the 'func' execute in the ThreadedWorker's thread and return the result to the callers thread
-#             # We do this by having the worker send it back via a temporary shared queue.
-#             queue = Queue()
-#             def _get_result(self):
-#                 result = func(self, *args, **kwargs)
-#                 queue.put(result)
-            
-#             self.mailbox.put((_get_result, (), {}))
-
-#             try:
-#                 # Return result when it's available or give up after sync_timeout
-#                 return queue.get(timeout=sync_timeout)
-#             except Empty:
-#                 raise TimeoutError
-        
-#         elif do_after:
-#             pass
-
-#         else:
-#             self.mailbox.put((func, args, kwargs))
-
-#     return _wrapper
-
-
 class ThreadedWorker(BaseObject):
     def __init__(self) -> None:
         self.mailbox     = Queue()

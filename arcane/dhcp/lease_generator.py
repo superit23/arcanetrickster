@@ -17,7 +17,7 @@ class DHCPLeaseGenerator(BaseObject):
                 if time.time() > expiration:
                     for lease in reversed(self.leases):
                         if hash(lease) == hash(old_lease):
-                            self.log.debug(f"Renewing lease {repr(lease)}")
+                            self.log.info(f"Renewing lease {repr(lease)}")
                             old_lease.renew(lease)
                             return lease
                 else:
@@ -30,7 +30,7 @@ class DHCPLeaseGenerator(BaseObject):
         for lease in reversed(self.leases):
             # Release it first if it expired
             if lease.ip_address in self.claimed:
-                old_lease, expiration, mac_address = self.claimed[lease.ip_address]
+                old_lease, expiration, old_mac = self.claimed[lease.ip_address]
 
                 if time.time() > expiration:
                     self.release(old_lease.ip_address)
@@ -42,14 +42,17 @@ class DHCPLeaseGenerator(BaseObject):
                 raise DHCPLeasePoolExhaustedException("Expired lease in renewal list")
 
             # Handle claims
+            # TODO: Handle this different when we're subleasing
+            lease            = lease.copy()
+            lease.start_time = time.time()
             self.claimed[lease.ip_address] = (lease, lease.expiration, mac_address)
             self.mac_ip_map[mac_address]   = lease.ip_address
-            self.log.debug(f"Claiming lease {repr(lease)}")
+            self.log.info(f"Claiming lease {repr(lease)}")
             return lease
 
         raise DHCPLeasePoolExhaustedException
 
 
     def release(self, ip_address: str=None):
-        self.log.debug(f"Releasing lease {repr(ip_address)}")
+        self.log.info(f"Releasing lease {repr(ip_address)}")
         del self.claimed[ip_address]

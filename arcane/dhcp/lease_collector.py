@@ -65,6 +65,12 @@ class DHCPLeaseCollector(ThreadedWorker):
     def _loop(self):
         xid   = random.randint(0, 2**32-1)
         lease = None
+
+        # We might lost network connectivity
+        if not self.interface.network:
+            self.log.warn(f"{self.interface.name} is not reporting a network configuration")
+            return
+
         if len(self.virtual_clients) < self.interface.network.num_addresses:
             mac = random_mac()
             self.virtual_clients[mac] = None
