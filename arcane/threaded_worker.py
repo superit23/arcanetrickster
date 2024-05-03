@@ -40,8 +40,8 @@ class ThreadedWorker(BaseObject):
                     attr._loop_init(self)
                 
                 if hasattr(attr, '_sub_init'):
-                    event_man, event = attr._sub_init
-                    event_man.subscribe(event, attr)
+                    event_man, event, filter_func = attr._sub_init
+                    event_man.subscribe(event, attr, filter_func)
 
 
     def __setattr__(self, name: str, value: object) -> None:

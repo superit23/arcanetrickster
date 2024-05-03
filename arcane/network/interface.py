@@ -179,7 +179,7 @@ class VirtualInterface(NetworkInterface):
 
 
     @api
-    def handle_packet(self, iface, packet):
+    def handle_packet(self, iface, proto, packet):
         print("Wowee")
         if iface in self.attached_interfaces:
             print("oh boy!")

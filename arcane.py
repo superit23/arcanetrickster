@@ -19,7 +19,7 @@ RUNTIME.event_manager.log_filter.allowlist_events.add(ARPTableEvent.ENTRY_CHANGE
 RUNTIME.event_manager.log_filter.allowlist_events.add(DHCPReleaseEvent.LEASE_RELEASED)
 # RUNTIME.event_manager.log_filter.allowlist_events.add(NetworkInterfaceEvent.READ)
 
-my_ip = "10.10.10.172"
+my_ip = "192.168.1.231"
 
 
 options_no_routes = {

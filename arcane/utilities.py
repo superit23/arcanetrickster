@@ -1,10 +1,10 @@
 import random
 
-def random_mac():
+def random_mac(broadcast: bool=False):
     mac = random.randint(0, 2**48-1)
 
     # Set the broadcast bit
-    if not mac & 2**40:
+    if (broadcast and not mac & 2**40) or (not broadcast and mac & 2**40):
         mac ^= 2**40
 
     mac = hex(mac)[2:].zfill(12)

@@ -24,10 +24,10 @@ class DHCPLeaseCollector(ThreadedWorker):
         self.xid_map[xid] = mac
 
 
-    @on_event(NetworkInterfaceEvent.READ)
+    @on_event(NetworkInterfaceEvent.READ, lambda iface, proto, data: DHCP in data)
     @api
     def handle_offer_callback(self, iface, proto, data):
-        if DHCP in data and data[BOOTP].xid in self.xid_map:
+        if data[BOOTP].xid in self.xid_map:
             self.log.debug(f"Creating lease: MAC: {data.dst}, IP: {data[BOOTP].yiaddr}, Options: {data[DHCP].options}")
 
             # Grab server info on first packet

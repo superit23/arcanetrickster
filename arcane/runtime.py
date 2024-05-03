@@ -38,9 +38,9 @@ def trigger_event(event: 'Enum', *args, **kwargs):
     RUNTIME.event_manager.trigger_event(event, *args, **kwargs)
 
 
-def on_event(event: 'Enum'):
+def on_event(event: 'Enum', filter_func=None):
     def _wrapper(func):
-        func._sub_init = (RUNTIME.event_manager, event)
+        func._sub_init = (RUNTIME.event_manager, event, filter_func)
         return func
 
     return _wrapper

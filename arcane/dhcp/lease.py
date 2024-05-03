@@ -19,8 +19,7 @@ def build_packet_base(op, xid: int=None, siaddr: int=None, ciaddr: int=None, sec
         / IP(src=src_ip or ANY_IP, dst=dst_ip or ALL_IP) \
         / UDP(dport=dport, sport=sport) \
         / BOOTP(op=op, secs=secs, chaddr=mac_bytes, xid=xid or random.randint(0, 2**32-1), 
-                siaddr=siaddr or ANY_IP, ciaddr=ciaddr or ANY_IP, yiaddr=yiaddr or ANY_IP,
-                flags="B")
+                siaddr=siaddr or ANY_IP, ciaddr=ciaddr or ANY_IP, yiaddr=yiaddr or ANY_IP)#, flags="B")
 
     return packet 
 

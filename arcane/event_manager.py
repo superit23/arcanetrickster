@@ -29,9 +29,9 @@ class EventManager(ThreadedWorker):
         self.log.addFilter(self.log_filter)
 
 
-    def wait_for_match(self, event, match_func, timeout: float=None):
+    def wait_for_match(self, event, filter_func, timeout: float=None):
         queue = Queue()
-        self._add_to_sync_queue(event, match_func, queue)
+        self._add_to_sync_queue(event, filter_func, queue)
         return queue.get(timeout=timeout)
 
 
@@ -41,19 +41,19 @@ class EventManager(ThreadedWorker):
             self.sync_listeners[event] = []
 
     @api
-    def _add_to_sync_queue(self, event, match_func, queue):
+    def _add_to_sync_queue(self, event, filter_func, queue):
         if not event in self.sync_listeners:
             self.sync_listeners[event] = []
 
-        self.sync_listeners[event].append((match_func, queue))
+        self.sync_listeners[event].append((filter_func, queue))
 
 
     @api
-    def subscribe(self, event: 'Enum', callback):
+    def subscribe(self, event: 'Enum', callback, filter_func=None):
         self._check_init_event(event)
 
         self.log.info(f"Appending callback for {event} for {callback}")
-        self.subscriptions[event].append(callback)
+        self.subscriptions[event].append((filter_func, callback))
 
 
     @api
@@ -61,12 +61,13 @@ class EventManager(ThreadedWorker):
         self._check_init_event(event)
 
         self.log.info(f"Event occurred: {event} {args}", extra={"event": event})
-        for subscriber in self.subscriptions[event]:
-            subscriber(*args, **kwargs)
+        for filter_func, subscriber in self.subscriptions[event]:
+            if not filter_func or filter_func(*args, **kwargs):
+                subscriber(*args, **kwargs)
 
         if event in self.sync_listeners:
-            for match_func, queue in self.sync_listeners[event]:
-                if match_func(event, *args, **kwargs):
+            for filter_func, queue in self.sync_listeners[event]:
+                if filter_func(event, *args, **kwargs):
                     queue.put((args, kwargs))
 
 

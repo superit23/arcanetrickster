@@ -50,10 +50,9 @@ class ARPTable(ThreadedWorker):
                 self.send_arp(ip, do_after=sleep_time)
 
 
-    @on_event(NetworkInterfaceEvent.READ)
+    @on_event(NetworkInterfaceEvent.READ, lambda iface, proto, packet: ARP in packet)
     @api
     def handle_packet(self, iface, proto, packet):
-        if ARP in packet:
-            if not (packet.psrc in self.table and self.table[packet.psrc] == packet.hwsrc):
-                self.table[packet.psrc] = packet.hwsrc
-                trigger_event(ARPTableEvent.ENTRY_CHANGED, packet.psrc, packet.hwsrc)
+        if not (packet.psrc in self.table and self.table[packet.psrc] == packet.hwsrc):
+            self.table[packet.psrc] = packet.hwsrc
+            trigger_event(ARPTableEvent.ENTRY_CHANGED, packet.psrc, packet.hwsrc)

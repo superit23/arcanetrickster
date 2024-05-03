@@ -26,12 +26,11 @@ class DHCPServer(ThreadedWorker):
         return len(self.lease_generator.leases)
 
 
-    @on_event(NetworkInterfaceEvent.READ)
+    @on_event(NetworkInterfaceEvent.READ, lambda iface, proto, packet: DHCP in packet)
     @api
     def handle_packet(self, iface, proto, packet):
-        if DHCP in packet:
-            self.handle_dhcp_discover(packet)
-            self.handle_dhcp_request(packet)
+        self.handle_dhcp_discover(packet)
+        self.handle_dhcp_request(packet)
 
 
     def _inject_options(self, lease):
