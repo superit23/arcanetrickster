@@ -1,5 +1,6 @@
 from arcane.base_object import BaseObject
-from arcane.runtime import api
+from arcane.events import RuntimeEvent
+from arcane.runtime import api, trigger_event
 from threading import Thread, Event, get_ident
 from queue import Queue, Empty
 import time
@@ -25,6 +26,11 @@ class ThreadedWorker(BaseObject):
     @api
     def sleep(self, sleep_time):
         time.sleep(sleep_time)
+
+
+    @api
+    def status(self):
+        trigger_event(RuntimeEvent.STATUS, self, repr(self))
 
 
     @api

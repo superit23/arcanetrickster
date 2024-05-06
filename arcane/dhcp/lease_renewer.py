@@ -35,7 +35,9 @@ class DHCPLeaseRenewer(ThreadedWorker):
             if lease in self.pending:
                 self.pending[lease].renew(lease)
                 del self.pending[lease]
+                self.log.debug(f"Lease for ({lease.ip_address}, {lease.mac_address}) successfully renewed")
             else:
+                self.log.debug(f"Appending new lease for ({lease.ip_address}, {lease.mac_address})")
                 self.leases.append(lease)
 
             self.leases.sort(key=lambda lease: lease.expiration)
@@ -50,6 +52,9 @@ class DHCPLeaseRenewer(ThreadedWorker):
             xid = random.randint(0, 2**32-1)
             if lease.is_expired:
                 expired_leases.append(lease)
+                if lease in self.pending:
+                    del self.pending[lease]
+
                 trigger_event(DHCPLeaseRenewerEvent.NEW_XID, xid, lease.mac_address)
                 self.interface.send(lease.build_discover_packet(xid))
             else:
@@ -66,10 +71,10 @@ class DHCPLeaseRenewer(ThreadedWorker):
             idx = binary_search_list(self.leases, lease.expiration, key=lambda lease: lease.expiration)
             del self.leases[idx]
 
-            self.log.debug(f"Deleting expired lease {repr(lease)}")
+            self.log.info(f"Deleting expired lease {repr(lease)}")
 
 
-    @loop(5)
+    @loop(2)
     def loop(self):
         self.handle_new_leases()
         self.renew_leases()

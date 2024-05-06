@@ -14,12 +14,12 @@ def build_packet_base(op, xid: int=None, siaddr: int=None, ciaddr: int=None, sec
     ANY_IP = '0.0.0.0'
     ALL_IP = '255.255.255.255'
 
-    mac_bytes = int.to_bytes(int((chaddr or src_mac).replace(":", ""), 16), 6, 'big')
+    mac_bytes = DHCPLease.serialize_mac(chaddr or src_mac)
     packet    = Ether(dst=dst_mac or 'ff:ff:ff:ff:ff:ff', src=src_mac, type=0x0800) \
         / IP(src=src_ip or ANY_IP, dst=dst_ip or ALL_IP) \
         / UDP(dport=dport, sport=sport) \
         / BOOTP(op=op, secs=secs, chaddr=mac_bytes, xid=xid or random.randint(0, 2**32-1), 
-                siaddr=siaddr or ANY_IP, ciaddr=ciaddr or ANY_IP, yiaddr=yiaddr or ANY_IP)#, flags="B")
+                siaddr=siaddr or ANY_IP, ciaddr=ciaddr or ANY_IP, yiaddr=yiaddr or ANY_IP, flags="B")
 
     return packet 
 
@@ -44,6 +44,11 @@ class DHCPLease(BaseObject):
 
     def __hash__(self):
         return hash((self.mac_address, self.ip_address, self.server_mac, self.server_ip))
+
+
+    @staticmethod
+    def serialize_mac(mac: str):
+        return int.to_bytes(int(mac.replace(":", ""), 16), 6, 'big')
 
 
     @staticmethod

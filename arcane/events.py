@@ -1,5 +1,7 @@
 from enum import Enum, auto
 
+class RuntimeEvent(Enum):
+    STATUS = auto()
 
 class NetworkInterfaceEvent(Enum):
     READ  = auto()

