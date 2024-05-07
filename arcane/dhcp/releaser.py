@@ -23,9 +23,7 @@ class DHCPReleaser(ThreadedWorker):
     @api
     def handle_packet(self, iface, proto, packet):
         if DHCP in packet and packet[BOOTP].op == 1:
-            #packet.show()
             options = DHCPLease.parse_options(packet[DHCP].options, strip_type=False)
-            print(options)
 
             # This is a unicast packet. We need to be MitM for this to work
             if options['message-type'] == 3:
@@ -34,8 +32,6 @@ class DHCPReleaser(ThreadedWorker):
                 if 'requested_addr' in options:
                     del options['requested_addr']
 
-                #nak = DHCPLease.build_nak_packet(xid=packet[BOOTP].xid, dst_ip=packet[IP].src, dst_mac=packet.src, src_ip=packet[IP].dst)
-                #self.interface.send(nak)
                 self.release_ip(DHCPLease.parse_client_ip(packet), options)
 
 
