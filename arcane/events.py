@@ -20,8 +20,9 @@ class ARPTableEvent(Enum):
     ENTRY_CHANGED = auto()
 
 class DHCPServerEvent(Enum):
-    LEASE_OFFERED = auto()
-    LEASE_DENIED  = auto()
+    LEASE_OFFERED  = auto()
+    LEASE_DENIED   = auto()
+    LEASE_ACCEPTED = auto()
 
 class DNSClientEvent(Enum):
     QUERY_RECEIVED    = auto()

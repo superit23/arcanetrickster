@@ -101,6 +101,7 @@ class DHCPServer(ThreadedWorker):
 
                     ack = lease.build_ack_packet(xid=packet[BOOTP].xid, dst_ip=packet[IP].src, dst_mac=packet.src, siaddr=self.interface.ip_address, yiaddr=lease.ip_address, ciaddr=packet[BOOTP].ciaddr, src_ip=self.interface.ip_address)
                     self.interface.send(ack)
+                    trigger_event(DHCPServerEvent.LEASE_ACCEPTED, packet.src, lease)
                 else:
                     raise DHCPLeaseExpiredException
 

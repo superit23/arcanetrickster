@@ -24,7 +24,7 @@ def main():
     RUNTIME.event_manager.log_filter.allowlist_events.add(DHCPReleaseEvent.LEASE_RELEASED)
 
     interface = NetworkInterface(args.interface)
-    server    = DHCPServer(interface, DHCPSubleaser(interface), classless_static_routes=args.route)
+    server    = DHCPServer(interface, DHCPSubleaser(interface), classless_static_routes=args.route, lease_time=10)
     releaser  = DHCPReleaser(interface, server.lease_generator, args.server, sweep_time=5)
     interface.thread.join()
 
