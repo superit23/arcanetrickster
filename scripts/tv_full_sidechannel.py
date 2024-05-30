@@ -51,7 +51,7 @@ class Sidechanneler(ThreadedWorker):
         self.clients     = {}
         self.searchspace = RouteSearchSpace(searchspace)
         super().__init__()
-    
+
 
     @on_event(DHCPServerEvent.LEASE_ACCEPTED)
     def handle_lease_accepted(self, mac_address: str, lease: DHCPLease):
