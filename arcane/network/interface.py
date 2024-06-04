@@ -3,8 +3,9 @@ from arcane.network.arp_table import ARPTable
 from arcane.runtime import loop, trigger_event
 from arcane.events import NetworkInterfaceEvent
 from arcane.network.linux import KernelInterface
-from scapy.all import Ether, get_if_hwaddr, get_if_addr, conf, ltoa, ARP, IP
-from ipaddress import IPv4Address, IPv4Network, NetmaskValueError
+from scapy.all import Ether, get_if_hwaddr, get_if_addr, ltoa
+from ipaddress import IPv4Network, NetmaskValueError
+from queue import Queue
 from enum import Enum
 from pyroute2 import NDB as Ndb
 
@@ -43,6 +44,7 @@ class NetworkInterface(ThreadedWorker, KernelInterface):
         
         self.arp_socket = create_raw_socket(self.name, Proto.ARP)
         self.arp_table  = ARPTable(self)
+        self.send_queue = Queue()
         super().__init__()
 
 
@@ -128,10 +130,9 @@ class NetworkInterface(ThreadedWorker, KernelInterface):
         self.thread.join()
 
 
-    def send(self, data: bytes):
+    def send(self, data: bytes, resend_tries: int=2):
         '''Sends data in bytes over the socket.'''
-        self.socket.send(bytes(data))
-        trigger_event(NetworkInterfaceEvent.WRITE, self, data)
+        self.send_queue.put((bytes(data), resend_tries))
 
 
     @loop(1e-3)
@@ -145,6 +146,18 @@ class NetworkInterface(ThreadedWorker, KernelInterface):
         if self.arp_socket in r:
             data = self.arp_socket.recv(4 * 1024)
             trigger_event(NetworkInterfaceEvent.READ, self, Proto.ARP, Ether(data))
+        
+        # Makes a more robust
+        if not self.send_queue.empty():
+            try:
+                data, resend_ctr = self.send_queue.get()
+                self.socket.send(data)
+                trigger_event(NetworkInterfaceEvent.WRITE, self, data)
+            except BlockingIOError:
+                if resend_ctr:
+                    self.send_queue.put(data, resend_ctr-1)
+
+                trigger_event(NetworkInterfaceEvent.RESOURCE_UNAVAILABLE, self)
 
 
 class VirtualSocket(object):
@@ -189,18 +202,3 @@ class VirtualInterface(NetworkInterface):
     def attach(self, interface: NetworkInterface):
         self.attached_interfaces.add(interface)
         _event_man.subscribe(NetworkInterfaceEvent.READ, self.handle_packet)
-
-
-class Bridge(object):
-    def __init__(self, name: str):
-        self.name = name
-        NDB.interfaces.create(ifname=self.name, kind='bridge').commit()
-
-    
-    def add_port(self, name: str):
-        with NDB.interfaces[name] as net_if:
-            net_if.set('master', NDB.interfaces[self.name]['index'])
-
-    def remove_port(self, name: str):
-        with NDB.interfaces[name] as net_if:
-            net_if.set('master', 0)

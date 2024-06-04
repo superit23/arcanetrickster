@@ -6,6 +6,7 @@ class RuntimeEvent(Enum):
 class NetworkInterfaceEvent(Enum):
     READ  = auto()
     WRITE = auto()
+    RESOURCE_UNAVAILABLE = auto()
 
 class DHCPLeaseCollectorEvent(Enum):
     NEW_LEASE = auto()

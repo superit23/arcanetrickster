@@ -1,11 +1,10 @@
 from arcane.threaded_worker import ThreadedWorker, api
 from arcane.events import NetworkInterfaceEvent, ARPTableEvent
 from arcane.runtime import on_event, trigger_event, loop, RUNTIME
-from scapy.all import Ether, ARP, DHCP
-import time
+from scapy.all import Ether, ARP
 
 class ARPTable(ThreadedWorker):
-    def __init__(self, interface: 'NetworkInterface', sweep_time: int=5) -> None:
+    def __init__(self, interface: 'NetworkInterface', sweep_time: int=10) -> None:
         self.interface  = interface
         self.table      = {}
         self.sweep_time = sweep_time

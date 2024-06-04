@@ -9,6 +9,7 @@ sudo nmcli con modify $CONNECTION_NAME 802-11-wireless.mode ap ipv4.method manua
 sudo nmcli con modify $CONNECTION_NAME wifi-sec.key-mgmt wpa-psk 
 sudo nmcli con modify $CONNECTION_NAME wifi-sec.psk "somepassword"
 
-sudo sysctl -w net.ipv4.ip_forward=1
-sudo iptables -t nat -A POSTROUTING -o $OUT_INTERFACE -j MASQUERADE
-sudo nmcli con $CONNECTION_NAME up
+sudo sysctl -w net.ipv4.ip_forward=1 # Enable IP forwarding
+sudo iptables -t nat -A POSTROUTING -o $OUT_INTERFACE -j MASQUERADE # Allow PNAT via OUT_INTERFACE
+sudo nmcli con up $CONNECTION_NAME # Actually turn on the connection
+sudo ip route del default via $MY_IP dev $AP_INTERFACE # Delete the default route for the AP_INTERFACE if it exists
