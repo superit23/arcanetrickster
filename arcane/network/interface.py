@@ -6,6 +6,9 @@ from arcane.network.linux import KernelInterface
 from scapy.all import Ether, get_if_hwaddr, get_if_addr, ltoa
 from ipaddress import IPv4Network, NetmaskValueError
 from queue import Queue
+from scapy.all import Ether, get_if_hwaddr, get_if_addr, ltoa, IP
+from ipaddress import IPv4Network, NetmaskValueError
+from queue import Queue
 from enum import Enum
 from pyroute2 import NDB as Ndb
 
@@ -44,6 +47,7 @@ class NetworkInterface(ThreadedWorker, KernelInterface):
         
         self.arp_socket = create_raw_socket(self.name, Proto.ARP)
         self.arp_table  = ARPTable(self)
+        self.send_queue = Queue()
         self.send_queue = Queue()
         super().__init__()
 
@@ -118,6 +122,13 @@ class NetworkInterface(ThreadedWorker, KernelInterface):
             return IPv4Network(f"{self.ip_address}/{self.subnet_mask}", strict=False)
         except NetmaskValueError:
             pass
+    
+
+    @property
+    def default_gateway(self):
+        for r in NDB.routes.summary():
+            if r['ifname'] == self.name and r['dst_len'] == 0:
+                return r['gateway']
 
 
     def close(self):
@@ -128,27 +139,45 @@ class NetworkInterface(ThreadedWorker, KernelInterface):
         self.event.set()
         self.socket.close()
         self.thread.join()
+    
+
+    def build_packet(self, mac_address: str=None, ip_address: str=None, dst_mac: str=None, dst_ip: str=None):
+        if not dst_mac:
+            gw = self.default_gateway
+            if gw:
+                dst_mac = self.arp_table[gw]
+
+        return Ether(src_mac=mac_address or self.mac_address, dst_mac=dst_mac) / IP(src=ip_address or self.ip_address, dst_ip=dst_ip)
 
 
     def send(self, data: bytes, resend_tries: int=2):
         '''Sends data in bytes over the socket.'''
         self.send_queue.put((bytes(data), resend_tries))
+        self.send_queue.put((bytes(data), resend_tries))
 
 
     @loop(1e-3)
     def _loop(self):
-        r, _w, _err = select.select([self.socket, self.arp_socket], [], [], 10e-3)
+        for _ in range(100):
+            r, _w, _err = select.select([self.socket, self.arp_socket], [], [], 1e-3)
 
-        if self.socket in r:
-            data = self.socket.recv(4 * 1024)
-            trigger_event(NetworkInterfaceEvent.READ, self, Proto.IP, Ether(data))
+            if not r:
+                break
 
-        if self.arp_socket in r:
-            data = self.arp_socket.recv(4 * 1024)
-            trigger_event(NetworkInterfaceEvent.READ, self, Proto.ARP, Ether(data))
-        
-        # Makes a more robust
-        if not self.send_queue.empty():
+            if self.socket in r:
+                data = self.socket.recv(4 * 1024)
+                trigger_event(NetworkInterfaceEvent.READ, self, Proto.IP, Ether(data))
+
+            if self.arp_socket in r:
+                data = self.arp_socket.recv(4 * 1024)
+                trigger_event(NetworkInterfaceEvent.READ, self, Proto.ARP, Ether(data))
+
+
+        # Makes a more robust send
+        for _ in range(100):
+            if self.send_queue.empty():
+                break
+
             try:
                 data, resend_ctr = self.send_queue.get()
                 self.socket.send(data)

@@ -26,9 +26,20 @@ class DHCPServerEvent(Enum):
     LEASE_ACCEPTED = auto()
 
 class DNSClientEvent(Enum):
-    QUERY_RECEIVED    = auto()
-    RESPONSE_RECEIVED = auto()
+    ANSWER_RECEIVED  = auto()
+    TIMEOUT_RECEIVED = auto()
+
+class DNSResolverEvent(Enum):
+    ANSWER_RECEIVED  = auto()
+    TIMEOUT_RECEIVED = auto()
 
 class DNSServerEvent(Enum):
-    QUERY_RECEIVED = auto()
-    RESPONSE_SENT  = auto()
+    QUERY_RECEIVED   = auto()
+    ADD_LOCAL_RECORD = auto()
+    RESPONSE_SENT    = auto()
+
+
+class SocketEvent(Enum):
+    OPEN  = auto()
+    READ  = auto()
+    WRITE = auto()

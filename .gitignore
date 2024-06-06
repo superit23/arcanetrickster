@@ -5,4 +5,6 @@
 *.swp
 MANIFEST
 info
+.env
+.venv
 scripts/.ipynb_checkpoints
