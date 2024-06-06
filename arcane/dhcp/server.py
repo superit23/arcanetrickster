@@ -67,10 +67,10 @@ class DHCPServer(ThreadedWorker):
                 trigger_event(DHCPServerEvent.LEASE_OFFERED, packet.src, lease)
 
             except DHCPLeaseExpiredException:
-                self.log.info(f"Denying lease for {lease_ip} to {packet.src}")
+                self.log.info(f"Denying lease for {lease.ip_address if lease else ip} to {packet.src}")
                 nak = DHCPLease.build_nak_packet(xid=packet[BOOTP].xid, dst_ip=packet[IP].src, dst_mac=packet.src, src_ip=self.interface.ip_address)
                 self.interface.send(nak)
-                trigger_event(DHCPServerEvent.LEASE_DENIED, packet.src, lease_ip)
+                trigger_event(DHCPServerEvent.LEASE_DENIED, packet.src, ip)
             
 
             except DHCPLeasePoolExhaustedException:

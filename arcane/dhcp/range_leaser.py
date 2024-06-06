@@ -26,7 +26,8 @@ class DHCPRangeLeaser(DHCPLeaseGenerator):
     def leases(self):
         if (self._leases[0].expiration - (self.options['lease_time'] // 2)) < time.time():
             for lease in self._leases:
-                lease.start_time = time.time()
+                if lease not in self.claimed:
+                    lease.start_time = time.time()
         
         return self._leases
 

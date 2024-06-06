@@ -32,13 +32,13 @@ class DHCPLeaseGenerator(BaseObject):
             if lease.ip_address in self.claimed:
                 old_lease, expiration, old_mac = self.claimed[lease.ip_address]
 
-                if time.time() > expiration:
+                if time.time() > expiration + 5:
                     self.release(old_lease.ip_address)
                 else:
                     continue
 
 
-            if lease.is_expired:
+            elif lease.is_expired:
                 raise DHCPLeasePoolExhaustedException("Expired lease in renewal list")
 
             # Handle claims

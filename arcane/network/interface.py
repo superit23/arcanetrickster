@@ -155,7 +155,7 @@ class NetworkInterface(ThreadedWorker, KernelInterface):
                 trigger_event(NetworkInterfaceEvent.WRITE, self, data)
             except BlockingIOError:
                 if resend_ctr:
-                    self.send_queue.put(data, resend_ctr-1)
+                    self.send_queue.put((data, resend_ctr-1))
 
                 trigger_event(NetworkInterfaceEvent.RESOURCE_UNAVAILABLE, self)
 
