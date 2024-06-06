@@ -3,6 +3,9 @@ from arcane.network.arp_table import ARPTable
 from arcane.runtime import loop, trigger_event
 from arcane.events import NetworkInterfaceEvent
 from arcane.network.linux import KernelInterface
+from scapy.all import Ether, get_if_hwaddr, get_if_addr, ltoa
+from ipaddress import IPv4Network, NetmaskValueError
+from queue import Queue
 from scapy.all import Ether, get_if_hwaddr, get_if_addr, ltoa, IP
 from ipaddress import IPv4Network, NetmaskValueError
 from queue import Queue
@@ -44,6 +47,7 @@ class NetworkInterface(ThreadedWorker, KernelInterface):
         
         self.arp_socket = create_raw_socket(self.name, Proto.ARP)
         self.arp_table  = ARPTable(self)
+        self.send_queue = Queue()
         self.send_queue = Queue()
         super().__init__()
 
@@ -148,6 +152,7 @@ class NetworkInterface(ThreadedWorker, KernelInterface):
 
     def send(self, data: bytes, resend_tries: int=2):
         '''Sends data in bytes over the socket.'''
+        self.send_queue.put((bytes(data), resend_tries))
         self.send_queue.put((bytes(data), resend_tries))
 
 
