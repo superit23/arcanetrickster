@@ -10,13 +10,13 @@ from scapy.all import DNS
 
 class DNSServer(ThreadedWorker):
 
-    def __init__(self: "DNSServer", interface: NetworkInterface, ns_ip: str="8.8.8.8", port: int=53, use_tcp: bool=False, custom_resolver: DNSInterceptResolver=DNSInterceptResolver()) -> None:
+    def __init__(self: "DNSServer", iface: NetworkInterface, ns_ip: str="8.8.8.8", port: int=53, use_tcp: bool=False, custom_resolver: DNSInterceptResolver=DNSInterceptResolver()) -> None:
         self.query_map  = {}
         self.resolver   = custom_resolver
         self.ns_ip      = ns_ip
         self.port       = port
         self.use_tcp    = use_tcp
-        self.socket     = NativeUDPSocket(interface=interface, port=self.port)
+        self.socket     = NativeUDPSocket(iface=iface, port=self.port)
         super().__init__()
 
 
