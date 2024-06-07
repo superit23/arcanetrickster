@@ -17,6 +17,13 @@ class _Runtime(object):
         return EventManager()
 
 
+    @property
+    @lru_cache(1)
+    def expiring_cache_manager(self):
+        from arcane.core.expiring_cache import ExpiringCacheManager
+        return ExpiringCacheManager()
+
+
 RUNTIME = _Runtime()
 
 def loop(sleep_time):
