@@ -1,7 +1,7 @@
-from arcane.events import DNSResolverEvent, SocketEvent
-from arcane.threaded_worker import ThreadedWorker
-from arcane.runtime import on_event
-from arcane.threaded_worker import api
+from arcane.core.events import DNSResolverEvent, SocketEvent
+from arcane.core.threaded_worker import ThreadedWorker
+from arcane.core.runtime import on_event
+from arcane.core.threaded_worker import api
 from arcane.dns.intercept_resolver import DNSInterceptResolver
 from arcane.network.interface import NetworkInterface
 from arcane.network.udp_socket import NativeUDPSocket
@@ -31,8 +31,8 @@ class DNSServer(ThreadedWorker):
 
     @on_event(DNSResolverEvent.ANSWER_RECEIVED)
     @api
-    def respond(self: "DNSServer", dns_resolver: DNSInterceptResolver, record: DNSRecord) -> None:
-        if dns_resolver == self.resolver:
+    def respond(self: "DNSServer", resolver: DNSInterceptResolver, record: DNSRecord) -> None:
+        if resolver == self.resolver:
             response = record.pack()
 
             src = self.query_map[record]

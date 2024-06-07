@@ -1,4 +1,5 @@
-from arcane.threaded_worker import ThreadedWorker, api
+from arcane.core.threaded_worker import ThreadedWorker, api
+from enum import Enum, auto
 from queue import Queue
 import logging
 

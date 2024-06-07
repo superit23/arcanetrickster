@@ -1,7 +1,7 @@
-from arcane.threaded_worker import ThreadedWorker, api
+from arcane.core.threaded_worker import ThreadedWorker, api
 from arcane.network.arp_table import ARPTable
-from arcane.runtime import loop, trigger_event
-from arcane.events import NetworkInterfaceEvent
+from arcane.core.runtime import loop, trigger_event
+from arcane.core.events import NetworkInterfaceEvent
 from arcane.network.linux import KernelInterface
 from scapy.all import Ether, get_if_hwaddr, get_if_addr, ltoa
 from ipaddress import IPv4Network, NetmaskValueError
@@ -222,12 +222,12 @@ class VirtualInterface(NetworkInterface):
 
     @api
     def handle_packet(self, iface, proto, packet):
-        print("Wowee")
         if iface in self.attached_interfaces:
-            print("oh boy!")
+
             self.socket.dev.write(bytes(packet))
 
 
     def attach(self, interface: NetworkInterface):
         self.attached_interfaces.add(interface)
+        # TODO Replace this _event_man does not exist anymore in the code.
         _event_man.subscribe(NetworkInterfaceEvent.READ, self.handle_packet)
