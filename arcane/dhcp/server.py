@@ -53,7 +53,7 @@ class DHCPServer(ThreadedWorker):
 
             try:
                 # Give them their current IP if we have it
-                if ip in self.lease_generator.claimed and self.lease_generator.claimed[ip][2] == packet.src:
+                if ip in self.lease_generator.claimed and self.lease_generator.claimed[ip][1] == packet.src:
                     lease = self.lease_generator.renew(ip)
                     self.log.info(f"Renewing {lease.ip_address} for {packet.src}")
                 else:
@@ -92,9 +92,8 @@ class DHCPServer(ThreadedWorker):
 
 
             try:
-                # if lease_ip in self.lease_generator.claimed and self.lease_generator.claimed[lease_ip][2] == packet.src:
                 # If the lease isn't taken and they want it, give it to them. Otherwise, if it's taken, it must match the MAC
-                if (lease_ip not in self.lease_generator.claimed) or lease_ip in self.lease_generator.claimed and self.lease_generator.claimed[lease_ip][2] == packet.src:
+                if (lease_ip not in self.lease_generator.claimed) or lease_ip in self.lease_generator.claimed and self.lease_generator.claimed[lease_ip][1] == packet.src:
                     lease = self.lease_generator.renew(lease_ip)
                     lease = self._inject_options(lease)
                     self.log.info(f"Sending lease for {lease.ip_address} to {packet.src}")

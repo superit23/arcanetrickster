@@ -37,8 +37,9 @@ class EventManager(ThreadedWorker):
 
     def _check_init_event(self, event):
         if not event in self.subscriptions:
-            self.subscriptions[event] = []
+            self.subscriptions[event]  = []
             self.sync_listeners[event] = []
+
 
     @api
     def _add_to_sync_queue(self, event, filter_func, queue):

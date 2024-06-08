@@ -57,7 +57,7 @@ def api(func):
             def _get_result(self):
                 result = func(self, *args, **kwargs)
                 queue.put(result)
-            
+
             self.mailbox.put((_get_result, (), {}))
 
             try:

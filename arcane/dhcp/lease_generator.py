@@ -10,17 +10,20 @@ class DHCPLeaseGenerator(BaseObject):
 
     def renew(self, ip_address: str):
         if ip_address in self.claimed:
-            old_lease, expiration, mac_address = self.claimed[ip_address]
+            old_lease, mac_address = self.claimed[ip_address]
 
             # Make sure that they actually have the IP
             if ip_address == self.mac_ip_map.get(mac_address, "DNE"):
-                if time.time() > expiration:
+                if time.time() > old_lease.expiration:
                     for lease in reversed(self.leases):
-                        if hash(lease) == hash(old_lease):
+                        # It's possible that a new version of this lease exists
+                        if lease == old_lease:
                             self.log.info(f"Renewing lease {repr(lease)}")
                             old_lease.renew(lease)
                             return lease
                 else:
+                    # TODO: Does this make sense for the subleaser?
+                    old_lease.start_time = time.time()
                     return old_lease
 
         raise DHCPLeaseExpiredException(ip_address)
@@ -30,9 +33,9 @@ class DHCPLeaseGenerator(BaseObject):
         for lease in reversed(self.leases):
             # Release it first if it expired
             if lease.ip_address in self.claimed:
-                old_lease, expiration, old_mac = self.claimed[lease.ip_address]
+                old_lease, old_mac = self.claimed[lease.ip_address]
 
-                if time.time() > expiration + 5:
+                if time.time() > old_lease.expiration + 5:
                     self.release(old_lease.ip_address)
                 else:
                     continue
@@ -45,7 +48,7 @@ class DHCPLeaseGenerator(BaseObject):
             # TODO: Handle this different when we're subleasing
             lease            = lease.copy()
             lease.start_time = time.time()
-            self.claimed[lease.ip_address] = (lease, lease.expiration, mac_address)
+            self.claimed[lease.ip_address] = (lease, mac_address)
             self.mac_ip_map[mac_address]   = lease.ip_address
             self.log.info(f"Claiming lease {repr(lease)}")
             return lease

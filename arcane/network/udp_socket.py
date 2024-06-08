@@ -30,7 +30,6 @@ class NativeUDPSocket(ThreadedWorker):
     def __init__(self, interface: "NetworkInterface", port: int) -> None:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(('', port))
-        # self.socket.setblocking(0)
 
         self.interface = interface
         self.port = port

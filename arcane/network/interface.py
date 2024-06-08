@@ -48,7 +48,6 @@ class NetworkInterface(ThreadedWorker, KernelInterface):
         self.arp_socket = create_raw_socket(self.name, Proto.ARP)
         self.arp_table  = ARPTable(self)
         self.send_queue = Queue()
-        self.send_queue = Queue()
         super().__init__()
 
 
