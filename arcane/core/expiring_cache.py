@@ -17,7 +17,7 @@ class ExpiringCacheManager(ThreadedWorker):
             trigger_event(ExpiringCacheManagerEvent.CACHE_ITEM_UPDATED, key, cache[key], expire_time)
             del self.object_timer_map[cache,key]
      
-        self.object_timer_map[cache,key] = (expire_time, cache)
+        self.object_timer_map[cache,key] = expire_time
     
 
     @api
@@ -28,12 +28,11 @@ class ExpiringCacheManager(ThreadedWorker):
     @api
     def _process_timers(self: "ExpiringCacheManager"):
         current_time = time.time()
-        for key, tuple_value in self.object_timer_map.items():
-            expire_time, cache = tuple_value
-            cache_key = key[1]
+        for mgr_key, expire_time in self.object_timer_map.items():
+            cache, cache_key = mgr_key
 
             if expire_time < current_time:
-                trigger_event(ExpiringCacheManagerEvent.CACHE_ITEM_EXPIRED, key, cache[cache_key], current_time)
+                trigger_event(ExpiringCacheManagerEvent.CACHE_ITEM_EXPIRED, mgr_key, cache[cache_key], current_time)
                 del cache[cache_key] 
             if expire_time > current_time:
                 #dict preserve insertion order, if we find something earlier than time.time() then break early
