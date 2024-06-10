@@ -28,13 +28,12 @@ class ExpiringCacheManager(ThreadedWorker):
     @api
     def _process_timers(self: "ExpiringCacheManager"):
         current_time = time.time()
-        for mgr_key, expire_time in self.object_timer_map.items():
-            cache, cache_key = mgr_key
+        for (cache, key), expiration in self.object_timer_map.items():
 
-            if expire_time < current_time:
-                trigger_event(ExpiringCacheManagerEvent.CACHE_ITEM_EXPIRED, mgr_key, cache[cache_key], current_time)
-                del cache[cache_key] 
-            if expire_time > current_time:
+            if expiration < current_time:
+                trigger_event(ExpiringCacheManagerEvent.CACHE_ITEM_EXPIRED, (cache,key), cache[key], current_time)
+                del cache[key] 
+            if expiration > current_time:
                 #dict preserve insertion order, if we find something earlier than time.time() then break early
                 break 
         self.sleep(5e-3)
