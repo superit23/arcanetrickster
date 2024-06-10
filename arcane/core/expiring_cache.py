@@ -49,19 +49,19 @@ class ExpiringCache(object):
         return str(self.dict)
 
     def __getitem__(self: "ExpiringCache", key: object) -> object:
-        return self.dict.__getitem__(key)
+        return self.dict[key]
     
 
     def __setitem__(self: "ExpiringCache", key: object, value: object) -> None:
         RUNTIME.expiring_cache_manager.add_timer(self,self.expire_time, key)
-        self.dict.__setitem__(key,value)
+        self.dict[key] = value
         trigger_event(ExpiringCacheEvent.ITEM_ADDED, key, self[key], self.expire_time)
 
 
     def __delitem__(self: "ExpiringCache", key: object) -> None:
         RUNTIME.expiring_cache_manager.del_timer(self,key)
         trigger_event(ExpiringCacheEvent.ITEM_REMOVED, key, self[key], time.time())
-        self.dict.__delitem__(key)
+        del self.dict[key]
    
 
 if __name__ == '__main__':
