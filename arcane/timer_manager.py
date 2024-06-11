@@ -12,7 +12,6 @@ class TimerManager(ThreadedWorker):
     @api
     def add_timer(self, sleep_time, callback: 'function', params):
         self.timers.append((time.time() + sleep_time, callback, params))
-        self.timers.sort(key=lambda item: item[0])
 
 
     @api

@@ -43,3 +43,7 @@ class SocketEvent(Enum):
     OPEN  = auto()
     READ  = auto()
     WRITE = auto()
+
+
+class VPNDetectorEvent(Enum):
+    VPN_FOUND = auto()

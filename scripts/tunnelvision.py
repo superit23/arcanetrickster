@@ -5,13 +5,13 @@ from arcane.dhcp.subleaser import DHCPSubleaser
 from arcane.dhcp.releaser import DHCPReleaser
 from arcane.dhcp.range_leaser import DHCPRangeLeaser
 from arcane.runtime import RUNTIME
-from arcane.events import DHCPServerEvent, ARPTableEvent, DHCPReleaseEvent
+from arcane.events import DHCPServerEvent, ARPTableEvent, DHCPReleaseEvent, NetworkInterfaceEvent
 from ipaddress import IPv4Address
 from enum import Enum
 import logging
 import argparse
 
-ALLOWED_EVENTS = [DHCPServerEvent.LEASE_ACCEPTED, DHCPServerEvent.LEASE_OFFERED, ARPTableEvent.ENTRY_CHANGED, DHCPReleaseEvent.LEASE_RELEASED]
+ALLOWED_EVENTS = [DHCPServerEvent.LEASE_ACCEPTED, DHCPServerEvent.LEASE_OFFERED, ARPTableEvent.ENTRY_CHANGED, DHCPReleaseEvent.LEASE_RELEASED, NetworkInterfaceEvent.RESOURCE_UNAVAILABLE]
 
 
 class ConfigurationType(Enum):

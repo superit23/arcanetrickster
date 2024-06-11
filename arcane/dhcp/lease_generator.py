@@ -29,20 +29,31 @@ class DHCPLeaseGenerator(BaseObject):
         raise DHCPLeaseExpiredException(ip_address)
 
 
-    def claim(self, mac_address: str):
-        for lease in reversed(self.leases):
-            # Release it first if it expired
-            if lease.ip_address in self.claimed:
-                old_lease, old_mac = self.claimed[lease.ip_address]
+    def claim(self, mac_address: str, desired_ip: str=None):
+        if desired_ip and not desired_ip in self.claimed:
+            for lease in reversed(self.leases):
+                if lease.ip_address == desired_ip:
+                    break
 
-                if time.time() > old_lease.expiration + 5:
-                    self.release(old_lease.ip_address)
+            raise DHCPLeasePoolExhaustedException
+        else:
+            for lease in reversed(self.leases):
+                # Release it first if it expired
+                if lease.ip_address in self.claimed:
+                    old_lease, old_mac = self.claimed[lease.ip_address]
+
+                    if time.time() > old_lease.expiration + 5:
+                        self.release(old_lease.ip_address)
+                        break
+                    else:
+                        continue
+
+
+                elif lease.is_expired:
+                    raise DHCPLeasePoolExhaustedException("Expired lease in renewal list")
+                
                 else:
-                    continue
-
-
-            elif lease.is_expired:
-                raise DHCPLeasePoolExhaustedException("Expired lease in renewal list")
+                    break
 
             # Handle claims
             # TODO: Handle this different when we're subleasing

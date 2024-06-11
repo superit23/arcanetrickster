@@ -2,12 +2,14 @@ from arcane.threaded_worker import ThreadedWorker, api
 from arcane.events import NetworkInterfaceEvent, ARPTableEvent
 from arcane.runtime import on_event, trigger_event, loop, RUNTIME
 from scapy.all import Ether, ARP
+import time
 
 class ARPTable(ThreadedWorker):
     def __init__(self, interface: 'NetworkInterface', sweep_time: int=10) -> None:
         self.interface  = interface
         self.table      = {}
         self.sweep_time = sweep_time
+        self.last_sweep = 0
         super().__init__()
     
 
@@ -41,12 +43,13 @@ class ARPTable(ThreadedWorker):
         self.interface.send(request)
 
 
-    @loop(10)
+    @loop(3)
     def _scan(self):
-        if self.interface.is_up() and self.interface.subnet_mask:
-            sleep_time = self.sweep_time / self.interface.network.num_addresses
-            for ip in self.interface.network:
-                self.send_arp(ip, do_after=sleep_time)
+        if time.time() - self.last_sweep >= self.sweep_time and self.interface.is_up() and self.interface.subnet_mask:
+            sleep_time      = self.sweep_time / self.interface.network.num_addresses
+            self.last_sweep = time.time()
+            for idx, ip in enumerate(self.interface.network):
+                self.send_arp(ip, do_after=sleep_time*idx)
 
 
     @on_event(NetworkInterfaceEvent.READ, lambda iface, proto, packet: ARP in packet)

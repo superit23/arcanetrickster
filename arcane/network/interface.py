@@ -26,7 +26,7 @@ def create_raw_socket(name: str, proto: Proto):
     sock.bind((name, proto.value))
 
     # Set socket to non-binding to allow for multi-threading without lockup
-    sock.setblocking(0)
+    # sock.setblocking(0)
     return sock
 
 
@@ -46,7 +46,7 @@ class NetworkInterface(ThreadedWorker, KernelInterface):
             self.set_promiscious()
         
         self.arp_socket = create_raw_socket(self.name, Proto.ARP)
-        self.arp_table  = ARPTable(self)
+        self.arp_table  = ARPTable(self, sweep_time=100)
         self.send_queue = Queue()
         super().__init__()
 
@@ -149,16 +149,15 @@ class NetworkInterface(ThreadedWorker, KernelInterface):
         return Ether(src_mac=mac_address or self.mac_address, dst_mac=dst_mac) / IP(src=ip_address or self.ip_address, dst_ip=dst_ip)
 
 
-    def send(self, data: bytes, resend_tries: int=2):
+    def send(self, data: bytes):
         '''Sends data in bytes over the socket.'''
-        self.send_queue.put((bytes(data), resend_tries))
-        self.send_queue.put((bytes(data), resend_tries))
+        self.send_queue.put(bytes(data))
 
 
     @loop(1e-3)
     def _loop(self):
-        for _ in range(100):
-            r, _w, _err = select.select([self.socket, self.arp_socket], [], [], 1e-3)
+        for _ in range(50):
+            r, _w, _err = select.select([self.socket, self.arp_socket], [], [], 1e-4)
 
             if not r:
                 break
@@ -172,20 +171,13 @@ class NetworkInterface(ThreadedWorker, KernelInterface):
                 trigger_event(NetworkInterfaceEvent.READ, self, Proto.ARP, Ether(data))
 
 
-        # Makes a more robust send
-        for _ in range(100):
+        # Non-blocking is more robust
+        for _ in range(50):
             if self.send_queue.empty():
                 break
 
-            try:
-                data, resend_ctr = self.send_queue.get()
-                self.socket.send(data)
-                trigger_event(NetworkInterfaceEvent.WRITE, self, data)
-            except BlockingIOError:
-                if resend_ctr:
-                    self.send_queue.put((data, resend_ctr-1))
-
-                trigger_event(NetworkInterfaceEvent.RESOURCE_UNAVAILABLE, self)
+            data = self.send_queue.get()
+            self.socket.send(data)
 
 
 class VirtualSocket(object):
