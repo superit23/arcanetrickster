@@ -1,7 +1,7 @@
 import time
 import random
 from scapy.all import Ether, IP, UDP, BOOTP, DHCP
-from arcane.base_object import BaseObject
+from arcane.core.base_object import BaseObject
 from copy import copy
 
 

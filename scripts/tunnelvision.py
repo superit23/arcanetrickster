@@ -4,8 +4,8 @@ from arcane.dhcp.server import DHCPServer
 from arcane.dhcp.subleaser import DHCPSubleaser
 from arcane.dhcp.releaser import DHCPReleaser
 from arcane.dhcp.range_leaser import DHCPRangeLeaser
-from arcane.runtime import RUNTIME
-from arcane.events import DHCPServerEvent, ARPTableEvent, DHCPReleaseEvent, NetworkInterfaceEvent
+from arcane.core.runtime import RUNTIME
+from arcane.core.events import DHCPServerEvent, ARPTableEvent, DHCPReleaseEvent
 from ipaddress import IPv4Address
 from enum import Enum
 import logging

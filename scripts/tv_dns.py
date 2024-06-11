@@ -2,8 +2,8 @@
 from arcane.network.interface import NetworkInterface
 from arcane.dns.server import DNSServer
 from arcane.dns.intercept_resolver import DNSInterceptResolver
-from arcane.runtime import RUNTIME, api, on_event
-from arcane.events import NetworkInterfaceEvent, DNSServerEvent, DNSResolverEvent, DNSClientEvent, SocketEvent
+from arcane.core.runtime import RUNTIME, api, on_event
+from arcane.core.events import NetworkInterfaceEvent, DNSServerEvent, DNSResolverEvent, DNSClientEvent, SocketEvent
 from arcane.dhcp.server import DHCPServer
 from arcane.dhcp.range_leaser import DHCPRangeLeaser
 from enum import Enum

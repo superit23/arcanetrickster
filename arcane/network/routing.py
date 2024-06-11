@@ -1,8 +1,8 @@
-from arcane.base_object import BaseObject
+from arcane.core.base_object import BaseObject
 from arcane.network.interface import NetworkInterface
-from arcane.exceptions import NoMatchingRouteException
-from arcane.runtime import on_event
-from arcane.events import NetworkInterfaceEvent
+from arcane.core.exceptions import NoMatchingRouteException
+from arcane.core.runtime import on_event
+from arcane.core.events import NetworkInterfaceEvent
 from ipaddress import IPv4Address, IPv4Network
 from copy import deepcopy
 from scapy.all import IP

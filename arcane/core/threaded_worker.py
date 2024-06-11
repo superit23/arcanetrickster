@@ -1,6 +1,6 @@
-from arcane.base_object import BaseObject
-from arcane.events import RuntimeEvent
-from arcane.runtime import api, trigger_event
+from arcane.core.base_object import BaseObject
+from arcane.core.events import RuntimeEvent
+from arcane.core.runtime import api, trigger_event
 from threading import Thread, Event, get_ident
 from queue import Queue, Empty
 import time

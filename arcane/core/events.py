@@ -38,6 +38,13 @@ class DNSServerEvent(Enum):
     ADD_LOCAL_RECORD = auto()
     RESPONSE_SENT    = auto()
 
+class ExpiringCacheManagerEvent(Enum):
+    CACHE_ITEM_EXPIRED = auto()
+    CACHE_ITEM_UPDATED = auto()
+
+class ExpiringCacheEvent(Enum):
+    ITEM_ADDED   = auto()
+    ITEM_REMOVED = auto()
 
 class SocketEvent(Enum):
     OPEN  = auto()
