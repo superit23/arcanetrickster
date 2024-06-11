@@ -1,5 +1,5 @@
-from arcane.threaded_worker import ThreadedWorker, api
-from arcane.utilities import binary_search_list
+from arcane.core.threaded_worker import ThreadedWorker, api
+from arcane.core.utilities import binary_search_list
 import time
 
 class TimerManager(ThreadedWorker):

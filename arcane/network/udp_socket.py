@@ -1,6 +1,8 @@
-from arcane.events import NetworkInterfaceEvent, SocketEvent
-from arcane.runtime import on_event, trigger_event, api, loop
-from arcane.threaded_worker import ThreadedWorker
+from arcane.core.events import NetworkInterfaceEvent, SocketEvent
+from arcane.core.runtime import on_event, trigger_event, api, loop
+from arcane.core.threaded_worker import ThreadedWorker
+
+from arcane.network.interface import NetworkInterface
 from scapy.all import UDP
 import socket
 

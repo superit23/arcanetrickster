@@ -1,6 +1,6 @@
-from arcane.threaded_worker import ThreadedWorker
-from arcane.events import RuntimeEvent
-from arcane.runtime import api, on_event, loop
+from arcane.core.threaded_worker import ThreadedWorker
+from arcane.core.events import RuntimeEvent
+from arcane.core.runtime import api, on_event, loop
 
 class Registry(ThreadedWorker):
     def __init__(self):

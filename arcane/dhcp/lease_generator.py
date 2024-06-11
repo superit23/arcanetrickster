@@ -1,5 +1,5 @@
-from arcane.base_object import BaseObject
-from arcane.exceptions import DHCPLeaseExpiredException, DHCPLeasePoolExhaustedException
+from arcane.core.base_object import BaseObject
+from arcane.core.exceptions import DHCPLeaseExpiredException, DHCPLeasePoolExhaustedException
 import time
 
 class DHCPLeaseGenerator(BaseObject):

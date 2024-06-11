@@ -1,7 +1,7 @@
-from arcane.events import DNSClientEvent
-from arcane.runtime import on_event, trigger_event
-from arcane.threaded_worker import api
-from arcane.threaded_worker import ThreadedWorker
+from arcane.core.events import DNSClientEvent
+from arcane.core.runtime import on_event, trigger_event
+from arcane.core.threaded_worker import api
+from arcane.core.threaded_worker import ThreadedWorker
 from dnslib.dns import DNSError, QTYPE
 from arcane.dns.record import DNSRecord
 from arcane.network.interface import NetworkInterface

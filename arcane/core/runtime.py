@@ -1,19 +1,27 @@
 from functools import lru_cache
 from queue import Queue, Empty
+from enum import Enum, auto
 
 class _Runtime(object):
     @property
     @lru_cache(1)
     def timer_manager(self):
-        from arcane.timer_manager import TimerManager
+        from arcane.core.timer_manager import TimerManager
         return TimerManager()
 
 
     @property
     @lru_cache(1)
     def event_manager(self):
-        from arcane.event_manager import EventManager
+        from arcane.core.event_manager import EventManager
         return EventManager()
+
+
+    @property
+    @lru_cache(1)
+    def expiring_cache_manager(self):
+        from arcane.core.expiring_cache import ExpiringCacheManager
+        return ExpiringCacheManager()
 
 
 RUNTIME = _Runtime()
