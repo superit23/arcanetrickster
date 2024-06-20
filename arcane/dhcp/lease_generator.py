@@ -33,7 +33,7 @@ class DHCPLeaseGenerator(BaseObject):
         if desired_ip and not desired_ip in self.claimed:
             for lease in reversed(self.leases):
                 if lease.ip_address == desired_ip:
-                    break
+                    return self._internal_claim(lease, mac_address)
 
             raise DHCPLeasePoolExhaustedException
         else:
@@ -55,16 +55,22 @@ class DHCPLeaseGenerator(BaseObject):
                 else:
                     break
 
-            # Handle claims
-            # TODO: Handle this different when we're subleasing
-            lease            = lease.copy()
-            lease.start_time = time.time()
-            self.claimed[lease.ip_address] = (lease, mac_address)
-            self.mac_ip_map[mac_address]   = lease.ip_address
-            self.log.info(f"Claiming lease {repr(lease)}")
-            return lease
+            return self._internal_claim(lease, mac_address)
 
         raise DHCPLeasePoolExhaustedException
+
+
+    def _internal_claim(self, lease, mac_address):
+        # Handle claims
+        # TODO: Handle this different when we're subleasing
+        lease            = lease.copy()
+        lease.start_time = time.time()
+        self.claimed[lease.ip_address] = (lease, mac_address)
+        self.mac_ip_map[mac_address]   = lease.ip_address
+        self.log.info(f"Claiming lease {repr(lease)}")
+        return lease
+
+
 
 
     def release(self, ip_address: str=None):

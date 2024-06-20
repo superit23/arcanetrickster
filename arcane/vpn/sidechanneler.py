@@ -1,8 +1,8 @@
 from arcane.dhcp.lease import DHCPLease
 from arcane.dhcp.server import DHCPServer
-from arcane.runtime import api, on_event
-from arcane.threaded_worker import ThreadedWorker
-from arcane.events import DHCPServerEvent, NetworkInterfaceEvent
+from arcane.core.runtime import api, on_event
+from arcane.core.threaded_worker import ThreadedWorker
+from arcane.core.events import DHCPServerEvent, NetworkInterfaceEvent, VPNDetectorEvent, SocketEvent
 from enum import Enum, auto
 from scapy.all import DHCP, ARP
 from queue import Queue
@@ -37,8 +37,11 @@ class RouteSearchSpace(object):
 
 
 class ClientState(object):
-    def __init__(self, searchspace, state: SidechannelState=SidechannelState.STARTED, desired_end_cidr: int=32):
+    def __init__(self, searchspace, detector, sock, state: SidechannelState=SidechannelState.STARTED, desired_end_cidr: int=32):
         self.state            = state
+        self.detector         = detector
+        self.sock             = sock
+
         self.traffic_observed = False
         self.current_space    = searchspace
         self.space_queue      = Queue()
@@ -83,25 +86,34 @@ class Sidechanneler(ThreadedWorker):
 
     @on_event(DHCPServerEvent.LEASE_ACCEPTED)
     def handle_lease_accepted(self, mac_address: str, lease: DHCPLease):
+        if mac_address in self.clients:
+            if self.clients[mac_address].state == SidechannelState.STARTED:
+                self.inject_routes(mac_address, lease, do_after=self.server.options['lease_time'])
+
+            # Lease has been accepted! Move to analysis
+            elif self.clients[mac_address].state == SidechannelState.WAITING_FOR_ACCEPT:
+                self.log.info(f"Analysis running for {mac_address} in {self.clients[mac_address].current_space}")
+                self.clients[mac_address].state = SidechannelState.ANALYSIS
+                self.analyze_traffic(mac_address, lease, do_after=self.server.options['lease_time']-3)
+        
+
+    @on_event(VPNDetectorEvent.VPN_FOUND)
+    def register_vpn_user(self, sock, detector):
+        mac_address = self.server.interface.arp_table[sock.ip_address]
+
         # Client not registered, start the FSM
         if not mac_address in self.clients:
             self.log.info(f"Registering new client {mac_address}")
-            self.clients[mac_address] = ClientState(self.searchspace)
-            self.inject_routes(mac_address, lease, do_after=self.server.options['lease_time'])
-
-        # Lease has been accepted! Move to analysis
-        elif self.clients[mac_address].state == SidechannelState.WAITING_FOR_ACCEPT:
-            self.log.info(f"Analysis running for {mac_address} in {self.clients[mac_address].current_space}")
-            self.clients[mac_address].state = SidechannelState.ANALYSIS
-            self.analyze_traffic(mac_address, lease, do_after=self.server.options['lease_time']-3)
+            self.clients[mac_address] = ClientState(self.searchspace, detector, sock)
 
 
-    @on_event(NetworkInterfaceEvent.READ, lambda iface, proto, packet: DHCP not in packet and ARP not in packet)
+
+    @on_event(SocketEvent.READ)
     @api
-    def listen_for_traffic(self, iface, proto, packet):
-        # TODO: Check for outbound to router via router MAC
-        if packet.src in self.clients and self.clients[packet.src].state == SidechannelState.ANALYSIS:
-            self.clients[packet.src].traffic_observed = True
+    def listen_for_traffic(self, _sock_man, _iface, proto, src, _dst, payload):
+        for client in self.clients.values():
+            if client.state == SidechannelState.ANALYSIS and client.sock.matches_event((_sock_man, _iface, proto, src, _dst, payload)):
+                client.traffic_observed |= client.detector.is_datachannel_packet(payload)
 
 
     @api

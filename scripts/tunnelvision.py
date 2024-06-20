@@ -11,7 +11,7 @@ from enum import Enum
 import logging
 import argparse
 
-ALLOWED_EVENTS = [DHCPServerEvent.LEASE_ACCEPTED, DHCPServerEvent.LEASE_OFFERED, ARPTableEvent.ENTRY_CHANGED, DHCPReleaseEvent.LEASE_RELEASED, NetworkInterfaceEvent.RESOURCE_UNAVAILABLE]
+ALLOWED_EVENTS = [DHCPServerEvent.LEASE_ACCEPTED, DHCPServerEvent.LEASE_OFFERED, ARPTableEvent.ENTRY_CHANGED, DHCPReleaseEvent.LEASE_RELEASED]
 
 
 class ConfigurationType(Enum):
