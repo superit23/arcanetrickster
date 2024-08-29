@@ -1,7 +1,6 @@
 from arcane.core.threaded_worker import ThreadedWorker, api
 from arcane.core.events import NetworkInterfaceEvent, ARPTableEvent
 from arcane.core.runtime import on_event, trigger_event, loop, RUNTIME
-from arcane.network.interface import NetworkInterface
 from scapy.all import Ether, ARP
 import time
 

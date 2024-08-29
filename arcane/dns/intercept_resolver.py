@@ -1,9 +1,8 @@
 from dnslib.dns import *
 from arcane.core.events import DNSResolverEvent,DNSClientEvent
 from arcane.core.runtime import on_event,trigger_event
-from arcane.core.threaded_worker import api
+from arcane.core.threaded_worker import api, ThreadedWorker
 from arcane.dns.client import DNSClient
-from arcane.core.threaded_worker import ThreadedWorker
 
 class DNSInterceptResolver(ThreadedWorker):
 

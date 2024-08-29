@@ -100,6 +100,16 @@ class WirelessFlags(IntFlag):
     SIOCSIWPMKSA = 0x8B36 # /* PMKSA cache operation */
 
 
+    def get_method_name(self):
+        action, attr = self.name.split("IW")
+        if action == "SIOCG":
+            name = "get"
+        else:
+            name = "set"
+
+        return f'{name}_iw_{attr.lower()}'
+
+
 
 class iw_param(ctypes.Structure):
     _fields_ = [("value", ctypes.c_int32),

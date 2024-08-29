@@ -1,6 +1,6 @@
-from arcane.events import NetworkInterfaceEvent, SocketEvent
-from arcane.runtime import on_event, trigger_event, api, loop
-from arcane.threaded_worker import ThreadedWorker
+from arcane.core.events import NetworkInterfaceEvent, SocketEvent
+from arcane.core.runtime import on_event, trigger_event, api, loop
+from arcane.core.threaded_worker import ThreadedWorker
 from scapy.all import UDP, IP, Raw
 import socket
 
@@ -37,7 +37,7 @@ class UDPSocketManager(ThreadedWorker):
         src_ip, src_port = packet[IP].src, packet[UDP].sport
         dst_ip, dst_port = packet[IP].dst, packet[UDP].dport
 
-        if iface == self.interface and UDP in packet and (dst_ip, dst_port) in self.sockets and Raw in packet:
+        if iface == self.interface and UDP in packet and (src_ip, src_port) in self.sockets and Raw in packet:
             trigger_event(SocketEvent.READ, self, iface, UDP, (src_ip, src_port), (dst_ip, dst_port), packet.load)
 
 
