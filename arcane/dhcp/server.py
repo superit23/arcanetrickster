@@ -1,5 +1,6 @@
 from arcane.dhcp.lease_generator import DHCPLeaseGenerator
 from arcane.dhcp.lease import DHCPLease
+from arcane.dhcp.options import DHCPOptions
 from arcane.network.interface import NetworkInterface
 from arcane.core.events import NetworkInterfaceEvent, DHCPServerEvent
 from arcane.core.runtime import on_event, trigger_event, api
@@ -10,10 +11,10 @@ from scapy.all import DHCP, IP, BOOTP
 
 
 class DHCPServer(ThreadedWorker):
-    def __init__(self, interface: NetworkInterface, lease_generator: DHCPLeaseGenerator, **options) -> None:
+    def __init__(self, interface: NetworkInterface, lease_generator: DHCPLeaseGenerator, options: 'List[Tuple]') -> None:
         self.lease_generator = lease_generator
         self.interface       = interface
-        self.options         = options
+        self.options         = DHCPOptions.wrap(options)
         super().__init__()
 
 
@@ -34,9 +35,9 @@ class DHCPServer(ThreadedWorker):
 
 
     def _inject_options(self, lease):
-            lease = lease.copy()
-            lease.options.update(self.options)
-            return lease
+        lease = lease.copy()
+        lease.options = lease.options.merge(self.options, overwrite=True)
+        return lease
 
 
     def handle_dhcp_discover(self, packet):
@@ -79,7 +80,7 @@ class DHCPServer(ThreadedWorker):
 
 
     def handle_dhcp_request(self, packet):
-        if ("message-type", 3) in packet[DHCP].options:
+        if ("message-type", 3) in packet[DHCP].options or ("message-type", 8) in packet[DHCP].options:
             self.log.debug(f"Handling DHCPREQUEST for {packet.src}")
 
             if packet[IP].src == "0.0.0.0":

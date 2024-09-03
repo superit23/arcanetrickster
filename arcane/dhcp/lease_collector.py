@@ -47,7 +47,7 @@ class DHCPLeaseCollector(ThreadedWorker):
                 data.src,
                 data[BOOTP].siaddr,
                 options,
-                options['lease_time']
+                options['lease_time'][0]
             )
 
             self.virtual_clients[mac] = lease

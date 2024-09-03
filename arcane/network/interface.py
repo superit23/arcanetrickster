@@ -3,7 +3,7 @@ from arcane.network.arp_table import ARPTable
 from arcane.core.runtime import loop, trigger_event
 from arcane.core.events import NetworkInterfaceEvent
 from arcane.network.linux import KernelInterface
-from scapy.all import Ether, get_if_hwaddr, get_if_addr, ltoa
+from scapy.all import Ether, get_if_hwaddr, get_if_addr, ltoa, fragment
 from ipaddress import IPv4Network, NetmaskValueError
 from queue import Queue
 from scapy.all import Ether, get_if_hwaddr, get_if_addr, ltoa, IP
@@ -35,7 +35,7 @@ class NetworkInterface(ThreadedWorker, KernelInterface):
         It uses a subscriber model to enable multi-threading.
     '''
 
-    def __init__(self, name: str, sock=None) -> None:
+    def __init__(self, name: str, sock=None, auto_fragment: bool=False) -> None:
         self.name = name
 
         if sock:
@@ -45,9 +45,10 @@ class NetworkInterface(ThreadedWorker, KernelInterface):
             self.socket = create_raw_socket(self.name, Proto.IP)
             self.set_promiscious()
         
-        self.arp_socket = create_raw_socket(self.name, Proto.ARP)
-        self.arp_table  = ARPTable(self, sweep_time=100)
-        self.send_queue = Queue()
+        self.arp_socket    = create_raw_socket(self.name, Proto.ARP)
+        self.arp_table     = ARPTable(self, sweep_time=100)
+        self.send_queue    = Queue()
+        self.auto_fragment = auto_fragment
         super().__init__()
 
 
@@ -149,9 +150,13 @@ class NetworkInterface(ThreadedWorker, KernelInterface):
         return Ether(src_mac=mac_address or self.mac_address, dst_mac=dst_mac) / IP(src=ip_address or self.ip_address, dst_ip=dst_ip)
 
 
-    def send(self, data: bytes):
+    def send(self, data: bytes, should_fragment: bool=False):
         '''Sends data in bytes over the socket.'''
-        self.send_queue.put(bytes(data))
+        if (self.auto_fragment or should_fragment) and IP in data:
+            for pkt in fragment(data):
+                self.send_queue.put(bytes(pkt))
+        else:
+            self.send_queue.put(bytes(data))
 
 
     @loop(1e-3)
@@ -171,7 +176,6 @@ class NetworkInterface(ThreadedWorker, KernelInterface):
                 trigger_event(NetworkInterfaceEvent.READ, self, Proto.ARP, Ether(data))
 
 
-        # Non-blocking is more robust
         for _ in range(50):
             if self.send_queue.empty():
                 break

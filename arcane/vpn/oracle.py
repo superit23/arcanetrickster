@@ -1,6 +1,7 @@
 from arcane.vpn.packet import wg_hdr, wg_initiate, wg_respond, wg_cookie, wg_transport, he_wire_hdr
 from arcane.core.serialization import Serializable
 from ctypes import sizeof
+from enum import Enum
 import time
 
 
@@ -173,27 +174,80 @@ class LightwayDetector(Detector):
             self.session_ids.add(header.session)
 
 
+def process_pkt(packet):
+    op = OpenVPNPacketType(packet.load[0] >> 3)
+    if op == OpenVPNPacketType.P_CONTROL_HARD_RESET_CLIENT_V2:
+        return OpenVPNControlPacket.deserialize(packet.load)[1]
+
+    elif op == OpenVPNPacketType.P_CONTROL_HARD_RESET_SERVER_V2:
+        return OpenVPNControlPacket.deserialize(packet.load)[1]
+
+    elif op == OpenVPNPacketType.P_CONTROL_V1:
+        return OpenVPNControlPacket.deserialize(packet.load)[1]
+
+    elif op == OpenVPNPacketType.P_ACK_V1:
+        return OpenVPNAckPacket.deserialize(packet.load)[1]
+
+    elif op == OpenVPNPacketType.P_DATA_V2:
+        return OpenVPNDataV2Packet.deserialize(packet.load)[1]
+
+    elif op == OpenVPNPacketType.P_DATA_V1:
+        return OpenVPNDataV1Packet.deserialize(packet.load)[1]
+
+
 
 S1 = Serializable[1]
-class OpenVPNUDPPacket(S1):
+# class OpenVPNUDPPacket(S1):
+#     op_and_key: S1.UInt8
+#     session_id: S1.UInt64
+#     hmac: S1.Bytes[20]
+#     replay_packet_id: S1.UInt32
+
+class OpenVPNPacketType(Enum):
+    P_CONTROL_HARD_RESET_CLIENT_V1 = 0x01
+    P_CONTROL_HARD_RESET_SERVER_V1 = 0x02
+    P_CONTROL_SOFT_RESET_V1        = 0x03
+    P_CONTROL_V1                   = 0x04
+    P_ACK_V1                       = 0x05
+    P_DATA_V1                      = 0x06
+    P_CONTROL_HARD_RESET_CLIENT_V2 = 0x07
+    P_CONTROL_HARD_RESET_SERVER_V2 = 0x08
+    P_DATA_V2                      = 0x09
+
+
+def include_remote_session(cls, state):
+    if bool(len(state['acked_packets'])):
+        return S1.UInt64
+    else:
+        return S1.Null
+
+
+class OpenVPNAckedArray(S1):
+    acked_packets: S1.SizedList[S1.UInt32]
+    remote_session_id: S1.Selector[include_remote_session]
+
+    def has_remote_session(self):
+        return not self.remote_session_id.val.is_type(S1.Null)
+
+
+class OpenVPNControlPacket(S1):
     op_and_key: S1.UInt8
     session_id: S1.UInt64
     hmac: S1.Bytes[20]
     replay_packet_id: S1.UInt32
-
-
-class OpenVPNControlPacket(S1):
     net_time: S1.UInt32
-    acked_packets: S1.SizedList[S1.UInt32]
-    remote_session_id: S1.UInt64
+    acked_packets: OpenVPNAckedArray
     message_packet_id: S1.UInt32
     payload: S1.GreedyBytes
 
 
 class OpenVPNAckPacket(S1):
+    op_and_key: S1.UInt8
+    session_id: S1.UInt64
+    hmac: S1.Bytes[20]
+    replay_packet_id: S1.UInt32
     net_time: S1.UInt32
-    acked_packets: S1.SizedList[S1.UInt32]
-    remote_session_id: S1.UInt64
+    acked_packets: OpenVPNAckedArray
 
 
 class OpenVPNDataV1Packet(S1):
@@ -219,9 +273,20 @@ class OpenVPNDetector(Detector):
         self.threshold  = 50
         self.session_id_pairs = set()
         self.replay_counters  = {}
+
         self.hmac_uni_ctr     = []
         self.hmac_strikes     = 0
-    
+        self.data_strikes     = 0
+
+
+    @property
+    def has_completed(self):
+        return self.bad_packet or (not self.hmac_strikes and not self.data_strikes and self.points >= self.threshold)
+
+    @property
+    def is_detected(self):
+        return not self.bad_packet and self.points >= self.threshold and not self.hmac_strikes and not self.data_strikes
+
 
     def analyze_hmac_distribution(self, hmac: bytes):
         """
@@ -252,13 +317,30 @@ class OpenVPNDetector(Detector):
             # ~26% for a uniform distribution
             if sum(self.hmac_uni_ctr) < 7:
                 self.hmac_strikes = max(self.hmac_strikes-1, 0)
-            
+
             self.hmac_uni_ctr = []
 
 
 
+    def analyze_data_distribution(self, data: bytes):
+        bit_len  = len(data)*8
+        data_bin = bin(int.from_bytes(data, 'big'))[2:].zfill(bit_len)
+        uni_diff = abs(bit_len-data_bin.count('1'))
+
+        if uni_diff < 15:
+            self.data_strikes = 0
+        elif uni_diff < 21:
+            self.data_strikes += 0.5
+        elif uni_diff < 25:
+            self.data_strikes += 1
+        else:
+            self.data_strikes += 1.5
+
+
+
     def process_packet(self, data):
-        packet = OpenVPNUDP.deserialize(data)[1]
+        packet = process_pkt(data)
+        # packet     = OpenVPNUDP.deserialize(data)[1]
         op, key_id = divmod(int(packet.op_and_key), 8) 
 
         # Likely to have low value key IDs
@@ -269,14 +351,19 @@ class OpenVPNDetector(Detector):
 
         # Correctness check; these are the only allowed values
         if not op in range(3, 12):
-            print("Bad op")
             self.bad_packet = True
             return
-        
-        self.analyze_hmac_distribution(bytes(packet.hmac))
+
+        # Nothing else to do if data packet
+        if packet.is_type(OpenVPNDataV1Packet) or packet.is_type(OpenVPNDataV2Packet):
+            if not self.is_complete:
+                self.analyze_data_distribution(bytes(packet.data))
+            return
+
+        if not self.is_complete:
+            self.analyze_hmac_distribution(bytes(packet.hmac))
 
         if self.hmac_strikes > 2:
-            print("HMAC")
             self.bad_packet = True
             return
 
@@ -287,11 +374,10 @@ class OpenVPNDetector(Detector):
         # Check whether the net time value is close to current time
         if int(packet.net_time) in range(curr_time-300, curr_time+300):
             self.points += 10
-        
+
 
         # It's possible that we'll get captures from the past. However, we should never see data from the future
         if int(packet.net_time) - curr_time > 86400:
-            print("TIME")
             self.bad_packet = True
             return
         
@@ -303,26 +389,29 @@ class OpenVPNDetector(Detector):
         if not (int(packet.replay_packet_id) >> 16):
             self.points += 3
 
-        # Message packet ID is likely to be low
-        if not (int(packet.message_packet_id) >> 24):
-            self.points += 2
 
-        if not (int(packet.message_packet_id) >> 16):
-            self.points += 3
+        if not packet.is_type(OpenVPNAckPacket):
+            # Message packet ID is likely to be low
+            if not (int(packet.message_packet_id) >> 24):
+                self.points += 2
+
+            if not (int(packet.message_packet_id) >> 16):
+                self.points += 3
 
 
         # Check if ACKs are numerically close; unlikely for non-related packets
-        if len(packet.acked_packets) > 1:
-            sorted_acks = sorted([int(pid) for pid in packet.acked_packets])
+        if len(packet.acked_packets.acked_packets) > 1:
+            sorted_acks = sorted([int(pid) for pid in packet.acked_packets.acked_packets])
             if (sorted_acks[1] - sorted_acks[0]) < len(sorted_acks)*2:
                 self.points += 5*len(sorted_acks)
 
 
-        # Match on session IDs
-        if (int(packet.session_id), int(packet.remote_session_id)) in self.session_id_pairs:
-            self.points += 10
-        else:
-            self.session_id_pairs.add((int(packet.session_id), int(packet.remote_session_id)))
+        if packet.acked_packets.has_remote_session():
+            # Match on session IDs
+            if (int(packet.session_id), int(packet.acked_packets.remote_session_id.val)) in self.session_id_pairs:
+                self.points += 10
+            else:
+                self.session_id_pairs.add((int(packet.session_id), int(packet.acked_packets.remote_session_id.val)))
 
 
         # Check if replay counter continues from previous
@@ -331,4 +420,3 @@ class OpenVPNDetector(Detector):
                 self.points += 10
         
         self.replay_counters[int(packet.session_id)] = int(packet.replay_packet_id)
-
