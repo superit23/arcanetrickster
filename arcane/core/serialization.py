@@ -1,4 +1,3 @@
-from distutils import dep_util
 from arcane.core.base_object import BaseObject
 from enum import Enum as _Enum, IntFlag as _IntFlag
 from copy import deepcopy
@@ -138,7 +137,7 @@ class SizedSerializable(BaseObject):
             # The second type check exists because sometimes a type is not itself (what the fuck)
             # This seems to happen when a type is defined within a class (e.g. samson.protocols.opaque.messages.Messages.KE1)
             # and has requires complex subtypes
-            if self.FORCE_TYPE and (type(v) is not t) and not (hasattr(type(v), '__annotations__') and hasattr(t, '__annotations__') and t.__annotations__.keys() == type(v).__annotations__.keys() and type(v).__name__ == t.__name__):
+            if self.FORCE_TYPE and (type(v) is not t) and not v.is_type(t):
                 v = t(v)
 
             setattr(self, k, v)
@@ -163,6 +162,9 @@ class SizedSerializable(BaseObject):
             process(k, v, t)
 
 
+
+    def is_type(self, t):
+        return hasattr(type(self), '__annotations__') and hasattr(t, '__annotations__') and t.__annotations__.keys() == type(self).__annotations__.keys() and type(self).__name__ == t.__name__
 
 
     @classmethod
@@ -212,6 +214,19 @@ class SizedSerializable(BaseObject):
 
     def native(self):
         return self
+    
+
+    def json(self):
+        if self.is_type(type(self.native())):
+            d = {}
+            for k,v in self.__dict__.items():
+                if k == 'parent':
+                    continue
+
+                d[k] = v.json() if v and hasattr(v, 'json') else v
+            return d
+        else:
+            return self.native()
 
 
     def __bytes__(self):
@@ -270,8 +285,9 @@ class SizedSerializable(BaseObject):
             sd = deepcopy(s.__dict__)
             od = deepcopy(o.__dict__)
 
-            del sd['parent']
-            del od['parent']
+            if 'parent' in sd:
+                del sd['parent']
+                del od['parent']
 
             if sd == od:
                 return True
@@ -383,7 +399,7 @@ class SizedSerializable(BaseObject):
             def __getitem__(cls, selector):
 
                 class Inst(cls.TYPED_CLS or cls):
-                    pass
+                    val: object
 
 
                 Inst.__name__   = f'{cls.__name__}'
@@ -396,6 +412,10 @@ class SizedSerializable(BaseObject):
         class Selector(cls, metaclass=SelectorMeta):
             SELECTOR = None
             val: object
+
+            def native(self):
+                return self.val.native()
+
 
             def serialize(self):
                 return self.val.serialize()
@@ -414,8 +434,9 @@ class SizedSerializable(BaseObject):
             SIGNED = False
             val: int
 
-            def __init__(self, val) -> None:
-                super().__init__(val)
+            def __init__(self, val, parent=None) -> None:
+                self.val = int(val)
+                self.parent = parent
                 if self.val.bit_length() > self.SIZE:
                     raise OverflowError("Int too large")
 

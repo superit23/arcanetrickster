@@ -2,6 +2,7 @@ import time
 import random
 from scapy.all import Ether, IP, UDP, BOOTP, DHCP
 from arcane.core.base_object import BaseObject
+from arcane.dhcp.options import DHCPOptions
 from copy import copy
 
 
@@ -30,7 +31,7 @@ class DHCPLease(BaseObject):
         self.ip_address  = ip_address
         self.server_mac  = server_mac
         self.server_ip   = server_ip
-        self.options     = options
+        self.options     = DHCPOptions.wrap(options)
         self.duration    = duration
         self.start_time  = time.time()
 
@@ -53,7 +54,7 @@ class DHCPLease(BaseObject):
 
     @staticmethod
     def parse_options(options, strip_type: bool=True):
-        return dict([(k,v) for k,v in [o for o in options if o not in ("end", "pad")] if not strip_type or k != "message-type"])
+        return DHCPOptions([(k,v) for k,v in [o for o in options if o not in ("end", "pad")] if not strip_type or k != "message-type"])
 
 
     @staticmethod
@@ -101,11 +102,10 @@ class DHCPLease(BaseObject):
 
 
     def build_ack_packet(self, xid, dst_mac, dst_ip, siaddr, yiaddr, src_ip, ciaddr='0.0.0.0'):
-        options = copy(self.options)
-        if "server_id" in options:
-            del options['server_id']
+        options = self.options.deepcopy()
+        options.remove_if_exists("server_id")
 
-        return build_packet_base(2, xid, dst_mac=dst_mac, dst_ip=dst_ip, src_ip=src_ip, siaddr=siaddr, chaddr=dst_mac, yiaddr=yiaddr, ciaddr=ciaddr) / DHCP(options=[("message-type", "ack"), ("server_id", siaddr), *list(options.items()), ("end")])
+        return build_packet_base(2, xid, dst_mac=dst_mac, dst_ip=dst_ip, src_ip=src_ip, siaddr=siaddr, chaddr=dst_mac, yiaddr=yiaddr, ciaddr=ciaddr) / DHCP(options=[("message-type", "ack"), ("server_id", siaddr), *options, ("end")])
 
 
     @staticmethod
@@ -115,11 +115,10 @@ class DHCPLease(BaseObject):
 
     def build_offer_packet(self, xid, dst_mac, dst_ip, siaddr, yiaddr):
         options = copy(self.options)
-        if "server_id" in options:
-            del options['server_id']
+        options.remove_if_exists("server_id")
 
-        return build_packet_base(2, xid, dst_mac=dst_mac, dst_ip=dst_ip, siaddr=siaddr, yiaddr=yiaddr, chaddr=dst_mac) / DHCP(options=[("message-type", "offer"), ("server_id", siaddr), *list(options.items()), ("end")])
+        return build_packet_base(2, xid, dst_mac=dst_mac, dst_ip=dst_ip, siaddr=siaddr, yiaddr=yiaddr, chaddr=dst_mac) / DHCP(options=[("message-type", "offer"), ("server_id", siaddr), *options, ("end")])
 
 
     def build_release_packet(self):
-        return build_packet_base(1, ciaddr=self.ip_address, **self.client_base_kwargs()) / DHCP(options=[("message-type", "release"), ("server_id", self.server_ip), *list(self.options.items()), ("end")])
+        return build_packet_base(1, ciaddr=self.ip_address, **self.client_base_kwargs()) / DHCP(options=[("message-type", "release"), ("server_id", self.server_ip), *self.options, ("end")])

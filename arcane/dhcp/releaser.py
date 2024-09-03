@@ -26,7 +26,7 @@ class DHCPReleaser(ThreadedWorker):
             options = DHCPLease.parse_options(packet[DHCP].options, strip_type=False)
 
             # This is a unicast packet. We need to be MitM for this to work
-            if options['message-type'] == 3:
+            if options['message-type'][0] == 3:
                 del options['message-type']
 
                 if 'requested_addr' in options:
@@ -46,7 +46,7 @@ class DHCPReleaser(ThreadedWorker):
                 ip_address=ip_address,
                 server_mac=self.server_mac,
                 server_ip=self.server_ip,
-                options=options or {'client_id': b'\x01' + DHCPLease.serialize_mac(mac)},
+                options=options or [('client_id', b'\x01' + DHCPLease.serialize_mac(mac))],
                 duration=0
             )
 

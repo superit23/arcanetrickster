@@ -8,6 +8,7 @@ from arcane.core.runtime import RUNTIME
 from arcane.core.events import DHCPServerEvent, ARPTableEvent, DHCPReleaseEvent
 from ipaddress import IPv4Address
 from enum import Enum
+import math
 import logging
 import argparse
 
@@ -43,38 +44,47 @@ def allowlist_events():
         RUNTIME.event_manager.log_filter.allowlist_events.add(event)
 
 
-def build_dhcp_base(parser):
-    args = parser.parse_args()
-    logging.root.setLevel(logging.DEBUG if args.verbose else logging.INFO)
+def build_dhcp_base(type: ConfigurationType, interface: str, lease_time: int, dns: str=None, route: list=None, server: str=None, network: str=None, mask: str=None, verbose: bool=False, other_options: list=None, **o_kwargs):
+    logging.root.setLevel(logging.DEBUG if verbose else logging.INFO)
 
-    interface = NetworkInterface(args.interface)
+    interface = NetworkInterface(interface)
 
-    options = {"lease_time": args.lease_time}
+    options = [("lease_time", lease_time)]
     kwargs  = {}
+    if route:
+        # Support large numbers of routes by chunking into duplicate fields (RFC3396)
+        for chunk in range(math.ceil(len(route) / 32)):
+            options.append(("classless_static_routes", route[chunk*32:(chunk+1)*32]))
+    
+    if other_options:
+        options.extend(other_options)
 
-    if args.route:
-        options["classless_static_routes"] = args.route
-
-    if args.type == ConfigurationType.ADJACENT.value:
+    if type == ConfigurationType.ADJACENT.value:
         lease_gen = DHCPSubleaser(interface)
-        releaser  = DHCPReleaser(interface, lease_gen, args.server, sweep_time=5)
+        releaser  = DHCPReleaser(interface, lease_gen, server, sweep_time=5)
         kwargs['releaser'] = releaser
     else:
-        start, end = args.network.split('-')
+        start, end = network.split('-')
         lease_gen  = DHCPRangeLeaser(interface, IPv4Address(start), IPv4Address(end))
-        options['subnet_mask'] = args.mask
+        options.append(('subnet_mask', mask))
 
-    if args.dns:
-        options['name_server'] = args.dns
+    if dns:
+        options.append(('name_server', dns))
 
-    server = DHCPServer(interface, lease_gen, **options)
+    server = DHCPServer(interface, lease_gen, options)
     
     return interface, server, lease_gen, kwargs
 
 
+def build_dhcp_from_args():
+    args      = build_parsers()[0].parse_args()
+    args_dict = dict(args._get_kwargs())
+    return build_dhcp_base(**args_dict)
+
+
 def main():
     allowlist_events()
-    interface, _server, _lease_gen, _kwargs = build_dhcp_base(build_parsers()[0])
+    interface, _server, _lease_gen, _kwargs = build_dhcp_from_args()
     interface.thread.join()
 
 

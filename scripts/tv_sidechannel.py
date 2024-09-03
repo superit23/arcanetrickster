@@ -52,7 +52,7 @@ def main():
         'lease_time': args.lease_time
     }
 
-    server   = DHCPServer(interface, DHCPSubleaser(interface), **all_traffic)
+    server   = DHCPServer(interface, DHCPSubleaser(interface), all_traffic)
     releaser = DHCPReleaser(interface, server.lease_generator, args.server, sweep_time=5)
 
     while True:

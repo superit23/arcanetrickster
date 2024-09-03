@@ -1,6 +1,6 @@
 from functools import lru_cache
 from rich.logging import RichHandler
-from copy import copy
+from copy import copy, deepcopy
 import logging
 logging.basicConfig(format='%(name)s(%(thread)d) %(message)s', handlers=[RichHandler()])
 
@@ -14,4 +14,6 @@ class BaseObject(object):
 
     def copy(self):
         return copy(self)
-    
+
+    def deepcopy(self):
+        return deepcopy(self)
